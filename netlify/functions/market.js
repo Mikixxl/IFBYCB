@@ -1,141 +1,91 @@
+// netlify/functions/market.js
+
+const fetch = require("node-fetch");
+
+// Cache settings
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const CACHE = new Map();
 
+// Tenors we expect for yield curves
+const TENORS = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "10Y", "30Y"];
+
+// Utility: wrap responses
+function resp(status, obj, cached = false) {
+  return {
+    statusCode: status,
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    },
+    body: JSON.stringify(obj),
+  };
+}
+
+// Utility: today’s ISO date
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Main handler
 exports.handler = async (event) => {
   try {
-    const url = new URL(event.rawUrl);
-    const type = (url.searchParams.get('type') || 'yield').toLowerCase();
-    const country = (url.searchParams.get('country') || 'US').toUpperCase();
-    const h = (url.searchParams.get('h') || 'today').toLowerCase();
+    const url = new URL(`https://x.invalid${event.path}?${event.rawQueryString || ""}`);
+    const type = (url.searchParams.get("type") || "yield").toLowerCase();
+    const country = (url.searchParams.get("country") || "US").toUpperCase();
+    const h = (url.searchParams.get("h") || "today").toLowerCase();
 
-    const allowedTypes = new Set(['yield', 'cds']);
-    const allowedCountries = new Set(['US', 'DE', 'GB', 'JP', 'CA']);
-    const allowedH = new Set(['today', '1w', '1m']);
-
-    if (!allowedTypes.has(type) || !allowedCountries.has(country) || !allowedH.has(h)) {
-      return resp(400, { error: 'Invalid parameters' });
-    }
-
+    // cache key must include country/type/horizon
     const cacheKey = `${type}:${country}:${h}`;
     const now = Date.now();
+
     const cached = CACHE.get(cacheKey);
     if (cached && now - cached.ts < CACHE_TTL_MS) {
       return resp(200, cached.data, true);
     }
 
     let data;
-    if (type === 'yield') {
-      data = await loadYield(country, h);
+    if (type === "yield") {
+      data = await fetchYield(country, h);
+    } else if (type === "cds") {
+      data = await fetchCDS(country, h);
     } else {
-      data = await loadCds(country, h);
+      return resp(400, { error: "invalid type" });
     }
 
     CACHE.set(cacheKey, { ts: now, data });
     return resp(200, data);
-  } catch (e) {
-    return resp(502, { error: e.message, stack: e.stack });
+  } catch (err) {
+    return resp(502, { error: err.message });
   }
 };
 
-function resp(statusCode, obj, cached = false) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(obj),
+// Fetch sovereign yield curve (placeholder demo values)
+async function fetchYield(country, horizon) {
+  // TODO: replace with real scraping/API if you want live data
+  const base = {
+    US: [5.25, 5.15, 5.10, 5.05, 5.00, 4.90, 4.85, 4.80],
+    DE: [3.25, 3.20, 3.15, 3.10, 3.00, 2.90, 2.80, 2.70],
+    GB: [4.50, 4.40, 4.35, 4.30, 4.20, 4.10, 4.00, 3.90],
+    JP: [0.10, 0.12, 0.13, 0.15, 0.20, 0.25, 0.30, 0.40],
+    CA: [4.20, 4.15, 4.10, 4.00, 3.90, 3.85, 3.80, 3.70],
   };
+
+  const arr = base[country] || base["US"];
+  const tenors = {};
+  TENORS.forEach((t, i) => (tenors[t] = arr[i]));
+
+  return { asOf: isoToday(), tenors };
 }
 
-async function loadYield(country, h) {
-  // For demo purposes we use static yields
-  const demoTenors = { '2Y': 1.5, '5Y': 1.7, '10Y': 2.0, '30Y': 2.5 };
-  return {
-    asOf: isoToday(),
-    tenors: demoTenors,
+// Fetch CDS 5Y spreads (demo values)
+async function fetchCDS(country, horizon) {
+  const demo = {
+    US: 25,
+    DE: 20,
+    GB: 35,
+    JP: 40,
+    CA: 30,
   };
-}
 
-async function loadCds(country, h) {
-  // Try fetching CDS from investing.com (stubbed here)
-  let page = null;
-  try {
-    const url = 'https://www.investing.com/rates-bonds/sovereign-credit-default-swaps';
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'text/html,application/xhtml+xml',
-      }
-    });
-    if (res.ok) {
-      page = { ts: Date.now(), html: await res.text(), src: 'investing' };
-    }
-  } catch (e) { }
-
-  if (!page || !page.html) {
-    try {
-      const wgbUrl = 'https://www.worldgovernmentbonds.com/sovereign-cds/';
-      const res2 = await fetch(wgbUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Accept-Language': 'en-US,en;q=0.9'
-        }
-      });
-      if (res2.ok) {
-        page = { ts: Date.now(), html: await res2.text(), src: 'wgb' };
-      }
-    } catch (e) { }
-  }
-
-  let cds = null;
-  if (page && page.html) {
-    const name = countryName(country);
-    if (page.src === 'investing') cds = parseInvestingCds(page.html, name);
-    if (cds == null) cds = parseWGBCds(page.html, name);
-  }
-
-  return {
-    asOf: isoToday(),
-    cds5y_bps: cds != null ? Number(cds) : demoCds(country, h)
-  };
-}
-
-function countryName(ccy) {
-  const map = {
-    US: 'United States',
-    DE: 'Germany',
-    GB: 'United Kingdom',
-    JP: 'Japan',
-    CA: 'Canada'
-  };
-  return map[ccy] || ccy;
-}
-
-function parseInvestingCds(html, name) {
-  try {
-    const re = new RegExp(`${name}[^\\n]*?5Y[^\\d]*(\\d+(?:\\.\\d+)?)`, 'i');
-    const m = re.exec(html);
-    return m ? Number(m[1]) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function parseWGBCds(html, name) {
-  try {
-    const re = new RegExp(`${name}[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*bp`, 'i');
-    const m = re.exec(html);
-    return m ? Number(m[1]) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function demoCds(country, h) {
-  // fallback demo values
-  const vals = { US: 25, DE: 20, GB: 40, JP: 35, CA: 22 };
-  return vals[country] || 50;
-}
-
-function isoToday() {
-  return new Date().toISOString().substring(0, 10);
+  return { asOf: isoToday(), cds5y_bps: demo[country] || 50 };
 }

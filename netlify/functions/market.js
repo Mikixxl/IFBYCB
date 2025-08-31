@@ -1,241 +1,322 @@
 // netlify/functions/market.js
-// Real: GB (BoE CSV via user-provided link) + DE (Bundesbank CSV if available; fallback WGB).
-// Demo: US/JP/CA for now. CDS: best-effort from WGB. 15-min cache.
 
-const CACHE_TTL_MS = 15 * 60 * 1000;
+// --- simple in-memory cache (per warm Lambda) ---
 const CACHE = new Map();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-const TENORS = ['1M','3M','6M','1Y','2Y','5Y','10Y','30Y'];
-const isoToday = () => new Date().toISOString().slice(0,10);
+const ALLOWED_TYPES = new Set(['yield', 'cds']);
+const ALLOWED_COUNTRIES = new Set(['US', 'DE', 'GB', 'JP', 'CA']);
+const ALLOWED_H = new Set(['today', '1w', '1m']);
 
-function resp(status, obj) {
-  return {
-    statusCode: status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    body: JSON.stringify(obj),
-  };
-}
+// Country display names for parsing/fallbacks
+const CNAMES = {
+  US: 'United States',
+  DE: 'Germany',
+  GB: 'United Kingdom',
+  JP: 'Japan',
+  CA: 'Canada'
+};
 
-function normCountry(input) {
-  if (!input) return 'US';
-  const s = String(input).trim().toUpperCase();
-  const map = new Map([
-    ['US','US'], ['USA','US'], ['UNITED STATES','US'],
-    ['DE','DE'], ['GERMANY','DE'], ['BUND','DE'],
-    ['GB','GB'], ['UK','GB'], ['UNITED KINGDOM','GB'], ['GILTS','GB'],
-    ['JP','JP'], ['JAPAN','JP'], ['JGB','JP'],
-    ['CA','CA'], ['CANADA','CA'], ['GOC','CA'],
-  ]);
-  return map.get(s) || 'US';
-}
+// Country landing pages on WGB (for yields & CDS row label)
+const WGB_COUNTRY_URL = {
+  US: 'https://www.worldgovernmentbonds.com/country/united-states/',
+  DE: 'https://www.worldgovernmentbonds.com/country/germany/',
+  GB: 'https://www.worldgovernmentbonds.com/country/united-kingdom/',
+  JP: 'https://www.worldgovernmentbonds.com/country/japan/',
+  CA: 'https://www.worldgovernmentbonds.com/country/canada/'
+};
+
+// Country landing pages on Investing.com (yields)
+const INV_COUNTRY_URL = {
+  US: 'https://www.investing.com/rates-bonds/usa-government-bonds',
+  DE: 'https://www.investing.com/rates-bonds/germany-government-bonds',
+  GB: 'https://www.investing.com/rates-bonds/uk-government-bonds',
+  JP: 'https://www.investing.com/rates-bonds/japan-government-bonds',
+  CA: 'https://www.investing.com/rates-bonds/canada-government-bonds'
+};
+
+const COMMON_HEADERS = {
+  // act like a browser; both sites serve bot-lite HTML to bare fetches otherwise
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept':
+    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://www.google.com/'
+};
 
 exports.handler = async (event) => {
   try {
-    const url = new URL(`https://x.invalid${event.path}?${event.rawQueryString || ''}`);
-    const type = (url.searchParams.get('type') || 'yield').toLowerCase();
-    const ccy  = normCountry(url.searchParams.get('country'));
-    const h    = (url.searchParams.get('h') || 'today').toLowerCase(); // today|1w|1m (visual)
-    if (!['yield','cds'].includes(type)) return resp(400, { error: 'invalid type' });
+    const url = new URL(
+      event.rawUrl ??
+        `https://dummy.local${event.path}${event.rawQuery ? '?' + event.rawQuery : ''}`
+    );
 
-    const key = `${type}:${ccy}:${h}`;
+    const type = (url.searchParams.get('type') || 'yield').toLowerCase();
+    const country = (url.searchParams.get('country') || 'US').toUpperCase();
+    const h = (url.searchParams.get('h') || 'today').toLowerCase();
+
+    if (!ALLOWED_TYPES.has(type)) return resp(400, { error: 'invalid type' });
+    if (!ALLOWED_COUNTRIES.has(country)) return resp(400, { error: 'invalid country' });
+    if (!ALLOWED_H.has(h)) return resp(400, { error: 'invalid horizon' });
+
+    // cache key by full query
+    const cacheKey = `${type}|${country}|${h}`;
+    const cached = CACHE.get(cacheKey);
     const now = Date.now();
-    const hit = CACHE.get(key);
-    if (hit && now - hit.ts < CACHE_TTL_MS) return resp(200, hit.data);
+    if (cached && now - cached.ts < CACHE_TTL_MS) {
+      return resp(200, cached.data, /*fromCache*/ true);
+    }
 
     let data;
     if (type === 'yield') {
-      if (ccy === 'GB') data = await loadGB_BoE(h);           // real
-      else if (ccy === 'DE') data = await loadDE_BbkOrWGB(h); // real (or proxy) with graceful fallback
-      else data = await loadDemoYield(ccy, h);                // US/JP/CA for now
+      data = await getYields(country);
     } else {
-      data = await loadCDS_WGB(ccy, h);                       // best-effort 5Y CDS
+      data = await getCds(country);
     }
 
-    CACHE.set(key, { ts: now, data });
+    // attach metadata used by your UI
+    data.country = country;
+    data.h = h;
+
+    CACHE.set(cacheKey, { ts: now, data });
     return resp(200, data);
-  } catch (e) {
-    return resp(502, { error: e.message });
+  } catch (err) {
+    console.error('Fatal function error:', err);
+    return resp(502, { error: String(err) });
   }
 };
 
-// ------------------------------
-// REAL: United Kingdom (Gilts) – Bank of England CSV (user link)
-async function loadGB_BoE(h) {
-  // Your exact BoE CSV builder link (from your message). Keep as-is.
-  const url = "https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?Travel=NIxIRxSUx&FromSeries=1&ToSeries=50&DAT=RNG&FD=1&FM=Jan&FY=2015&TD=29&TM=Aug&TY=2025&FNY=&CSVF=TT&html.x=218&html.y=24&C=DQT&C=DQU&C=13S&C=13U&C=DR0&C=5JL&C=15A&C=158&C=C6R&C=2BN&C=4ZC&C=15B&C=5Z4&C=23N&C=DRW&C=C6S&C=DRY&C=4ZD&C=159&C=4ZB&C=2C6&C=DRZ&C=C6T&C=DR6&C=5Z3&C=RN&C=15F&Filter=N";
+// ---- main scrapers ----
 
-  const csv = await fetchText(url, { accept: 'text/csv,*/*' });
-  // BoE CSV header is comma-separated; last non-empty row is latest
-  const lines = csv.split(/\r?\n/).filter(l => l.trim().length);
-  if (lines.length < 2) throw new Error('BoE CSV empty');
+// Yields: try WorldGovernmentBonds first, then Investing.com.
+// Return shape:
+// { asOf: 'YYYY-MM-DD', tenors:{'1M':..,'3M':..,'6M':..,'1Y':..,'2Y':..,'5Y':..,'7Y':..,'10Y':..,'20Y':..,'30Y':..}, src:'wgb'|'investing'|'demo' }
+async function getYields(ccy) {
+  // 1) WGB
+  try {
+    const url = WGB_COUNTRY_URL[ccy];
+    const res = await fetch(url, { headers: COMMON_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const parsed = parseWgbYields(html);
+      if (parsed) {
+        parsed.src = 'wgb';
+        return parsed;
+      }
+    } else {
+      console.warn('WGB yields HTTP', res.status, ccy);
+    }
+  } catch (e) {
+    console.warn('WGB yields failed', ccy, e);
+  }
 
-  const header = splitCSV(lines[0]);            // array of column names
-  const row    = splitCSV(lines[lines.length-1]); // latest data row
-  const H = indexHeader(header);
+  // 2) Investing.com
+  try {
+    const url = INV_COUNTRY_URL[ccy];
+    const res = await fetch(url, { headers: COMMON_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const parsed = parseInvestingYields(html);
+      if (parsed) {
+        parsed.src = 'investing';
+        return parsed;
+      }
+    } else {
+      console.warn('Investing yields HTTP', res.status, ccy);
+    }
+  } catch (e) {
+    console.warn('Investing yields failed', ccy, e);
+  }
 
-  const pick = (...names) => pickNum(row, H, names);
-
-  const tenors = {
-    '1M':  pick('1M','1 month','1 m'),
-    '3M':  pick('3M','3 months','3 m'),
-    '6M':  pick('6M','6 months','6 m'),
-    '1Y':  pick('1Y','1 year','1 y'),
-    '2Y':  pick('2Y','2 years','2 y'),
-    '5Y':  pick('5Y','5 years','5 y'),
-    '10Y': pick('10Y','10 years','10 y'),
-    '30Y': pick('30Y','30 years','30 y'),
-  };
-
-  return { asOf: isoToday(), country: 'GB', tenors };
+  // 3) Fallback demo
+  return demoYield();
 }
 
-// ------------------------------
-// REAL (preferred): Germany – Bundesbank KM1/KM1e CSV (if reachable)
-// Fallback (proxy): WorldGovernmentBonds country page (if BBK blocked)
-// Fallback2: demo to keep UI alive
-async function loadDE_BbkOrWGB(h) {
-  // Attempt: Bundesbank CSV (KM1 / KM1e). If you have a specific CSV URL, drop it here.
-  const candidates = [
-    // Generic AAA par curve series (example); replace with your exact KM1e CSV if you prefer.
-    "https://www.bundesbank.de/statistic-rmi/Download?tsId=BBK01.WT1010&its_csvFormat=en&its_fileType=csv",
+// CDS: WorldGovernmentBonds “Sovereign CDS” page (5Y).
+// Return shape: { asOf:'YYYY-MM-DD', cds5y_bps:Number|null, src:'wgb'|'demo' }
+async function getCds(ccy) {
+  // the consolidated CDS page lists all countries
+  const cdsUrl = 'https://www.worldgovernmentbonds.com/sovereign-cds/';
+  try {
+    const res = await fetch(cdsUrl, { headers: COMMON_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const val = parseWgbCds(html, CNAMES[ccy]);
+      if (val != null) {
+        return { asOf: isoToday(), cds5y_bps: val, src: 'wgb' };
+      }
+      console.warn('WGB cds parse miss for', ccy);
+    } else {
+      console.warn('WGB cds HTTP', res.status);
+    }
+  } catch (e) {
+    console.warn('WGB cds failed', e);
+  }
+
+  // fallback demo
+  return { asOf: isoToday(), cds5y_bps: null, src: 'demo' };
+}
+
+// ---- parsers ----
+
+// WorldGovernmentBonds (country page) yields parser.
+// Tries to find a JS array with points or a table with tenors.
+function parseWgbYields(html) {
+  // Try to catch a JS array used to draw the curve; several WGB pages include something like:
+  // data: [['1M',1.55],['3M',...],...,['30Y',...]]
+  const jsArray = /(?:data|series)\s*:\s*(\[[^\]]+\])/i.exec(html);
+  const tenors = {};
+
+  if (jsArray) {
+    const raw = jsArray[1];
+    // very light, tolerant parsing of ["1M", 5.35] tuples
+    const pairs = raw.match(/\[\s*['"]([0-9MY]+)['"]\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g) || [];
+    for (const t of pairs) {
+      const m = /\[\s*['"]([0-9MY]+)['"]\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/.exec(t);
+      if (m) tenors[normalizeTenor(m[1])] = Number(m[2]);
+    }
+  }
+
+  // If nothing captured, try a table with tenor names in first column and yields in second.
+  if (Object.keys(tenors).length === 0) {
+    // tenor label followed by a yield number with %; grab common tenors only
+    const rows = [...html.matchAll(
+      />(1M|3M|6M|1Y|2Y|5Y|7Y|10Y|20Y|30Y)<\/td>\s*<td[^>]*>\s*(-?\d+(?:\.\d+)?)\s*%/gi
+    )];
+    for (const r of rows) {
+      tenors[r[1]] = Number(r[2]);
+    }
+  }
+
+  if (Object.keys(tenors).length === 0) return null;
+
+  return { asOf: isoToday(), tenors };
+}
+
+// Investing.com yields parser.
+// Page usually contains a table where tenor label and last yield (%) are present.
+function parseInvestingYields(html) {
+  const tenors = {};
+
+  // Look for rows like: <td>United States 10-Year</td> ... <td class="lastNum">4.28</td>
+  // We map a few common aliases to our canonical tenors
+  const labelToTenor = [
+    [/(\b1\s*month|\b1m)/i, '1M'],
+    [/(\b3\s*month|\b3m)/i, '3M'],
+    [/(\b6\s*month|\b6m)/i, '6M'],
+    [/(\b1\s*year|\b1y)/i, '1Y'],
+    [/(\b2\s*year|\b2y)/i, '2Y'],
+    [/(\b5\s*year|\b5y)/i, '5Y'],
+    [/(\b7\s*year|\b7y)/i, '7Y'],
+    [/(\b10\s*year|\b10y)/i, '10Y'],
+    [/(\b20\s*year|\b20y)/i, '20Y'],
+    [/(\b30\s*year|\b30y)/i, '30Y']
   ];
 
-  for (const url of candidates) {
-    try {
-      const csv = await fetchText(url, { accept: 'text/csv,*/*' });
-      const lines = csv.split(/\r?\n/).filter(l => l.trim().length);
-      if (lines.length < 2) continue;
+  // Grab table rows roughly
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+  for (const row of rows) {
+    const labelCell = /<td[^>]*>\s*([^<]+?)\s*<\/td>/i.exec(row);
+    const yieldCell = /(?:last|pid-\d+-last|lastNum)[^>]*>\s*(-?\d+(?:\.\d+)?)/i.exec(row) ||
+                      /<td[^>]*>\s*(-?\d+(?:\.\d+)?)\s*%?\s*<\/td>/i.exec(row);
+    if (!labelCell || !yieldCell) continue;
 
-      // Bundesbank CSV often uses semicolons; detect delimiter
-      const delim = lines[0].includes(';') ? ';' : ',';
-      const header = lines[0].split(delim).map(s => s.trim());
-      const row    = lines[lines.length-1].split(delim).map(s => s.trim());
-      const H = indexHeader(header);
-
-      const pick = (...names) => pickNum(row, H, names);
-
-      const tenors = {
-        '1M':  pick('1M','1 month','1 MONAT'),
-        '3M':  pick('3M','3 months','3 MONATE'),
-        '6M':  pick('6M','6 months','6 MONATE'),
-        '1Y':  pick('1Y','1 year','1 JAHR'),
-        '2Y':  pick('2Y','2 years','2 JAHRE'),
-        '5Y':  pick('5Y','5 years','5 JAHRE'),
-        '10Y': pick('10Y','10 years','10 JAHRE'),
-        '30Y': pick('30Y','30 years','30 JAHRE'),
-      };
-
-      return { asOf: isoToday(), country: 'DE', tenors };
-    } catch(_) { /* try next */ }
-  }
-
-  // Fallback: WGB Germany page (parse table for standard nodes)
-  try {
-    const html = await fetchText('https://www.worldgovernmentbonds.com/country/germany/', { accept: 'text/html,*/*' });
-    const tenors = extractWGBTenors(html);
-    if (Object.values(tenors).some(v => v != null)) {
-      return { asOf: isoToday(), country: 'DE', tenors };
+    const label = labelCell[1];
+    const y = Number(yieldCell[1]);
+    for (const [re, tenor] of labelToTenor) {
+      if (re.test(label)) {
+        tenors[tenor] = y;
+        break;
+      }
     }
-  } catch(_) { /* ignore */ }
-
-  // Final fallback: demo
-  return await loadDemoYield('DE', h);
-}
-
-// ------------------------------
-// CDS 5Y best-effort from WGB (graceful null on failure)
-async function loadCDS_WGB(ccy, h) {
-  const slug = { US:'united-states', DE:'germany', GB:'united-kingdom', JP:'japan', CA:'canada' }[ccy] || 'united-states';
-  const url = `https://www.worldgovernmentbonds.com/cds-historical-data/${slug}/5-years/`;
-  try {
-    const html = await fetchText(url, { accept: 'text/html,*/*', referer: 'https://www.worldgovernmentbonds.com/' });
-    const m = html.match(/Last[^0-9\-]*([0-9]+(?:\.[0-9]+)?)\s*bp/i);
-    const val = m ? Number(m[1]) : null;
-    return { asOf: isoToday(), country: ccy, cds5y_bps: Number.isFinite(val) ? val : null };
-  } catch(_) {
-    return { asOf: isoToday(), country: ccy, cds5y_bps: null };
   }
+
+  if (Object.keys(tenors).length === 0) return null;
+  return { asOf: isoToday(), tenors };
 }
 
-// ------------------------------
-// TEMP demo curves — used for US/JP/CA (and as last resort)
-async function loadDemoYield(ccy, h) {
-  const demo = {
-    US: [5.35,5.25,5.15,5.05,4.90,4.70,4.60,4.55],
-    DE: [3.60,3.50,3.45,3.35,3.10,2.85,2.70,2.65],
-    GB: [4.95,4.85,4.70,4.55,4.30,4.05,3.95,3.90],
-    JP: [0.25,0.22,0.20,0.18,0.25,0.30,0.33,0.45],
-    CA: [4.30,4.20,4.10,4.00,3.85,3.70,3.60,3.55],
+// WorldGovernmentBonds global CDS page parser: extract 5Y bps for a country row
+function parseWgbCds(html, countryName) {
+  // Find the row with the country name, then capture the 5Y column value (bps)
+  // Table often has columns: Country | 1Y | 2Y | 3Y | 5Y | 7Y | 10Y ...
+  // We'll first locate the row, then grab the first number after a 5Y header, or the 4th numeric cell.
+  const rowRe = new RegExp(`<tr[^>]*>[^<]*<td[^>]*>\\s*${escapeReg(countryName)}\\s*<\\/td>[\\s\\S]*?<\\/tr>`, 'i');
+  const row = html.match(rowRe)?.[0];
+  if (!row) return null;
+
+  // Try to locate headers to know which index is 5Y
+  const header = html.match(/<thead[^>]*>[\s\S]*?<\/thead>/i)?.[0] || '';
+  let idx5y = -1;
+  if (header) {
+    const hcells = [...header.matchAll(/<th[^>]*>\s*([^<]+?)\s*<\/th>/gi)].map(m => m[1].trim().toUpperCase());
+    idx5y = hcells.findIndex(t => /\b5Y\b/.test(t));
+  }
+
+  // Extract numeric cells from the row
+  const nums = [...row.matchAll(/<td[^>]*>\s*(-?\d+(?:\.\d+)?)\s*<\/td>/gi)].map(m => Number(m[1]));
+
+  // First numeric cell is usually the 1Y (since first cell is country); if header told us the slot, use it
+  let v = null;
+  if (idx5y >= 0 && nums.length >= idx5y) {
+    // nums array aligns to numeric columns only (country cell removed), so idx offset may differ.
+    // Heuristic: many tables have: Country | 1Y | 2Y | 3Y | 5Y ... so 5Y is 4th numeric -> index 3
+    v = nums[idx5y - 1] ?? null;
+  }
+  if (v == null && nums.length >= 4) v = nums[3]; // 4th numeric cell heuristic (5Y)
+
+  return v == null ? null : Number(v);
+}
+
+// ---- helpers ----
+function resp(status, obj, fromCache = false) {
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*' // handy while you’re iterating
   };
-  const arr = demo[ccy] || demo.US;
-  const tenors = {};
-  TENORS.forEach((t,i) => tenors[t] = arr[i]);
-  return { asOf: isoToday(), country: ccy, tenors };
+  if (fromCache) headers['X-Cache'] = 'HIT';
+
+  return {
+    statusCode: status,
+    headers,
+    body: JSON.stringify(obj)
+  };
 }
 
-// ------------------------------
-// Helpers: fetching and parsing
-async function fetchText(url, extraHeaders = {}) {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-      'Accept': extraHeaders.accept || '*/*',
-      ...(extraHeaders.referer ? { 'Referer': extraHeaders.referer } : {})
+function isoToday() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function normalizeTenor(t) {
+  // normalize e.g. '1m','1 M','10 y' -> '1M'/'10Y'
+  const s = String(t).replace(/\s+/g, '').toUpperCase();
+  if (/\d+M/.test(s)) return s.replace(/[^0-9M]/g, '');
+  if (/\d+Y/.test(s)) return s.replace(/[^0-9Y]/g, '');
+  return s;
+}
+
+function escapeReg(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// --- demo fallback values (kept stable so UI doesn’t break) ---
+function demoYield() {
+  return {
+    asOf: isoToday(),
+    tenors: {
+      '1M': 5.35,
+      '3M': 5.25,
+      '6M': 5.15,
+      '1Y': 5.05,
+      '2Y': 4.90,
+      '5Y': 4.70,
+      '7Y': 4.60,
+      '10Y': 4.55,
+      '20Y': 4.50,
+      '30Y': 4.45
     },
-    // Netlify runtime supports AbortSignal timeout in Node 18+, but not all envs:
-    // we rely on upstream stability; catch network errors above.
-  });
-  if (!res.ok) throw new Error(`fetch ${res.status} ${url}`);
-  return res.text();
-}
-
-function splitCSV(line) {
-  // Simple CSV splitter (no quoted commas needed for these feeds)
-  return line.split(',').map(s => s.trim());
-}
-
-function indexHeader(cols) {
-  const H = {};
-  cols.forEach((c, i) => { H[String(c).toUpperCase()] = i; });
-  return H;
-}
-
-function pickNum(row, H, names) {
-  for (const n of names) {
-    const i = H[String(n).toUpperCase()];
-    if (i != null && i < row.length) {
-      const v = toNum(row[i]);
-      if (v != null) return v;
-    }
-  }
-  return null;
-}
-
-function toNum(x) {
-  if (x == null) return null;
-  const n = Number(String(x).replace(',', '.').replace(/[^\d.\-]/g,''));
-  return Number.isFinite(n) ? n : null;
-}
-
-// Extract standard nodes from a WGB country page table (best-effort).
-function extractWGBTenors(html) {
-  const map = {};
-  const grab = (label, patts) => {
-    for (const p of patts) {
-      const m = html.match(p);
-      if (m) return toNum(m[1]);
-    }
-    return null;
+    src: 'demo'
   };
-
-  map['1M']  = grab('1M',  [/1\s*Month[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['3M']  = grab('3M',  [/3\s*Months?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['6M']  = grab('6M',  [/6\s*Months?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['1Y']  = grab('1Y',  [/(?:1\s*Year|12\s*Months)[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['2Y']  = grab('2Y',  [/2\s*Years?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['5Y']  = grab('5Y',  [/5\s*Years?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['10Y'] = grab('10Y', [/10\s*Years?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-  map['30Y'] = grab('30Y', [/30\s*Years?[^0-9\-]*([0-9]+(?:\.[0-9]+)?)/i]);
-
-  return map;
 }

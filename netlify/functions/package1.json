@@ -1,0 +1,18 @@
+{
+  "name": "ifbycb-functions",
+  "version": "1.0.0",
+  "description": "Netlify serverless functions for yield curve and CDS visualiser",
+  "main": "market.js",
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "node-fetch": "^2.6.1"
+  },
+  "engines": {
+    "node": ">=14.x"
+  },
+  "author": "Michael",
+  "license": "MIT"
+}

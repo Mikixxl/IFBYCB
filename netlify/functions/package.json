@@ -1,9 +1,8 @@
 {
-  "name": "ifbyc-functions",
+  "name": "ifbycb-functions",
+  "version": "1.0.0",
   "private": true,
-  "type": "commonjs",
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^2.6.7"
   }
 }

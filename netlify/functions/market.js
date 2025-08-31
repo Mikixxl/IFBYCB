@@ -1,32 +1,24 @@
 // netlify/functions/market.js
-// Returns sovereign YIELD tenors or CDS(5Y) for US, DE, GB, JP, CA.
-// Primary source: worldgovernmentbonds.com (HTML scrape).
+// Returns sovereign YIELD tenors or CDS(5Y) for US, DE, GB, JP, CA
+// Primary source: worldgovernmentbonds.com (HTML scrape)
 //
 // Query:
-//   type=yield|cds        (default yield)
-//   country=US|DE|GB|JP|CA (default US)
-//   h=today|1w|1m         (kept for UI; source is "today")
-//   debug=1               (optional: include parser notes/sample)
+//   type=yield|cds        (default: yield)
+//   country=US|DE|GB|JP|CA (default: US)
+//   h=today|1w|1m          (kept for UI compatibility; source is "today")
+//   debug=1                (optional diagnostics in response)
 //
 // Response (yield):
-// { asOf:"YYYY-MM-DD", country:"US", tenors:{ "1M":5.35,... }, src:"live|demo", debug?:{...} }
+//   { asOf:"YYYY-MM-DD", country:"US", tenors:{ "1M":5.35,... }, src:"live|demo", debug?:{...} }
 //
 // Response (cds):
-// { asOf:"YYYY-MM-DD", country:"US", cds5y_bps: 87, src:"live|demo", debug?:{...} }
+//   { asOf:"YYYY-MM-DD", country:"US", cds5y_bps: 87, src:"live|demo", debug?:{...} }
 
 const fetch = require("node-fetch");
 
-let cheerio = null;
-// Cheerio is optional: we try to use it if installed. If not, we still work via regex fallback.
-try {
-  cheerio = require("cheerio");
-} catch (e) {
-  // leave cheerio = null
-}
-
-// ------------------------
+// ---------------------------
 // Config
-// ------------------------
+// ---------------------------
 const COUNTRY_SLUG = {
   US: "united-states",
   DE: "germany",
@@ -35,23 +27,21 @@ const COUNTRY_SLUG = {
   CA: "canada",
 };
 
-const TENOR_LABEL = {
-  "1M": "1 Month",
-  "3M": "3 Months",
-  "6M": "6 Months",
-  "1Y": "1 Year",
-  "2Y": "2 Years",
-  "5Y": "5 Years",
-  "7Y": "7 Years",
-  "10Y": "10 Years",
-  "20Y": "20 Years",
-  "30Y": "30 Years",
+// label patterns we will accept for each tenor (language/format agnostic)
+const TENOR_PATTERNS = {
+  "1M": [/1\s*month/i, /\b1m\b/i, /1\s*monat/i],
+  "3M": [/3\s*months?/i, /\b3m\b/i, /3\s*monate?/i],
+  "6M": [/6\s*months?/i, /\b6m\b/i, /6\s*monate?/i],
+  "1Y": [/1\s*year/i, /\b1y\b/i, /1\s*jahr/i],
+  "2Y": [/2\s*years?/i, /\b2y\b/i, /2\s*jahre?/i],
+  "5Y": [/5\s*years?/i, /\b5y\b/i, /5\s*jahre?/i],
+  "7Y": [/7\s*years?/i, /\b7y\b/i, /7\s*jahre?/i],
+  "10Y": [/10\s*years?/i, /\b10y\b/i, /10\s*jahre?/i],
+  "20Y": [/20\s*years?/i, /\b20y\b/i, /20\s*jahre?/i],
+  "30Y": [/30\s*years?/i, /\b30y\b/i, /30\s*jahre?/i],
 };
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-
-// Safe demo curve (used if live scrape fails)
+// demo curve as hard fallback
 const DEMO_TENORS = {
   "1M": 5.35,
   "3M": 5.25,
@@ -65,12 +55,19 @@ const DEMO_TENORS = {
   "30Y": 4.45,
 };
 
-// ------------------------
-// Helpers
-// ------------------------
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const isNum = (x) => Number.isFinite(x) && !Number.isNaN(x);
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
+// ---------------------------
+// Helpers
+// ---------------------------
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const num = (x) => {
+  const v = parseFloat(String(x).replace(",", "."));
+  return Number.isFinite(v) ? v : null;
+};
+
+// grab HTML safely
 async function getHtml(url) {
   const res = await fetch(url, {
     headers: {
@@ -85,129 +82,84 @@ async function getHtml(url) {
   return res.text();
 }
 
-// --- generic “nearest %” regex finder around a label (fallback if no Cheerio)
-function findNearestPercent(html, label) {
-  const i = html.toLowerCase().indexOf(label.toLowerCase());
-  if (i < 0) return null;
-  const WINDOW = 400; // broadened window for safety
-  const start = Math.max(0, i - WINDOW);
-  const end = Math.min(html.length, i + WINDOW);
+// search the HTML for a label pattern and then the nearest percentage value
+function findPercentNear(html, regex) {
+  const m = html.match(regex);
+  if (!m) return null;
+  const idx = m.index ?? html.search(regex);
+  if (idx < 0) return null;
+
+  // scan a window around the label for something like "4.55 %" or "4,55%"
+  const win = 300;
+  const start = Math.max(0, idx - win);
+  const end = Math.min(html.length, idx + win);
   const snippet = html.slice(start, end);
 
-  // Allow % with tags in between; also catch "p.a." patterns
-  const m =
-    snippet.match(/(\d+(?:[.,]\d+)?)\s*%/i) ||
-    snippet.match(/(\d+(?:[.,]\d+)?)\s*p\.?\s*a\.?/i);
-  if (!m) return null;
-  return parseFloat(m[1].replace(",", "."));
+  const p = snippet.match(/(\d+(?:[.,]\d+)?)\s*%/);
+  return p ? num(p[1]) : null;
 }
 
-// --- Cheerio-based row/neighbor search for a label’s number
-function findByLabelCheerio($, label, debug) {
-  // Heuristic: find any node that contains the label (case-insensitive),
-  // then look in the same row/cell or immediate siblings for a number with %.
-  const matches = [];
-  $("*").each((_, el) => {
-    const t = $(el).text().trim();
-    if (!t) return;
-    if (t.toLowerCase().includes(label.toLowerCase())) matches.push(el);
-  });
+// table-aware parser as primary approach; falls back to label-near-value search
+function parseYieldsRobust(html, debug) {
+  const out = {};
 
-  for (const el of matches) {
-    // 1) If inside a table row: harvest text of the row
-    const tr = $(el).closest("tr");
-    if (tr.length) {
-      const rowText = tr.text();
-      const v =
-        extractPercent(rowText) ?? extractPa(rowText) ?? extractBareNumber(rowText);
-      if (isNum(v)) {
-        debug && debug.notes.push(`Cheerio row hit for "${label}": ${v}`);
-        return v;
-      }
-      // Try next cells explicitly
-      const cells = tr.find("td,th").toArray().map((c) => $(c).text());
-      for (const c of cells) {
-        const vv = extractPercent(c) ?? extractPa(c) ?? extractBareNumber(c);
-        if (isNum(vv)) {
-          debug && debug.notes.push(`Cheerio cell hit for "${label}": ${vv}`);
-          return vv;
+  // --- A) Try table rows like: <tr> <td>10 Years</td> <td>2.45 %</td> ... </tr>
+  // Very permissive: label cell followed by value (with %). Works across languages.
+  const rowRegex =
+    /<tr[^>]*>\s*<t[hd][^>]*>(.*?)<\/t[hd]>\s*<t[hd][^>]*>(.*?)<\/t[hd]>/gims;
+  let rowMatch;
+  const rowHits = [];
+
+  while ((rowMatch = rowRegex.exec(html))) {
+    const labelCell = rowMatch[1].replace(/<[^>]+>/g, " ").toLowerCase();
+    const valCell = rowMatch[2].replace(/<[^>]+>/g, " ");
+
+    // try to map this row to a tenor code using our patterns
+    for (const [code, patterns] of Object.entries(TENOR_PATTERNS)) {
+      if (patterns.some((re) => re.test(labelCell))) {
+        const p = valCell.match(/(\d+(?:[.,]\d+)?)\s*%/);
+        if (p) {
+          const v = num(p[1]);
+          if (v != null) {
+            out[code] = v;
+            rowHits.push(`${code}:${v}`);
+          }
         }
       }
     }
-    // 2) Otherwise: use immediate parent’s text block
-    const block = $(el).parent().text();
-    const v =
-      extractPercent(block) ?? extractPa(block) ?? extractBareNumber(block);
-    if (isNum(v)) {
-      debug && debug.notes.push(`Cheerio parent block hit for "${label}": ${v}`);
-      return v;
+  }
+
+  if (debug && rowHits.length) debug.notes.push(`tableRows: ${rowHits.join(", ")}`);
+
+  // --- B) For any tenor still missing, search label anywhere and read nearby value
+  for (const [code, patterns] of Object.entries(TENOR_PATTERNS)) {
+    if (out[code] != null) continue;
+    for (const re of patterns) {
+      const v = findPercentNear(html, re);
+      if (v != null) {
+        out[code] = v;
+        if (debug) debug.notes.push(`nearby(${code}) ok via ${re}`);
+        break;
+      }
     }
   }
 
-  return null;
+  const found = Object.keys(out).length;
+  return { ok: found >= 6, tenors: out, found };
 }
 
-const extractPercent = (s) => {
-  const m = String(s).match(/(\d+(?:[.,]\d+)?)\s*%/i);
-  return m ? parseFloat(m[1].replace(",", ".")) : null;
-};
-const extractPa = (s) => {
-  const m = String(s).match(/(\d+(?:[.,]\d+)?)\s*p\.?\s*a\.?/i);
-  return m ? parseFloat(m[1].replace(",", ".")) : null;
-};
-// Last-ditch: number possibly separated by tags (no %/p.a. around)
-const extractBareNumber = (s) => {
-  const m = String(s).match(/(\d+(?:[.,]\d+)?)/);
-  return m ? parseFloat(m[1].replace(",", ".")) : null;
-};
-
-function parseWGBYields(html, debug) {
-  const tenors = {};
-  if (cheerio) {
-    const $ = cheerio.load(html);
-    for (const [code, lbl] of Object.entries(TENOR_LABEL)) {
-      const v = findByLabelCheerio($, lbl, debug);
-      if (isNum(v)) tenors[code] = v;
-    }
-  } else {
-    // fallback: regex window around labels
-    for (const [code, lbl] of Object.entries(TENOR_LABEL)) {
-      const v = findNearestPercent(html, lbl);
-      if (isNum(v)) tenors[code] = v;
-    }
-  }
-  const ok = Object.keys(tenors).length >= 4; // consider success if ≥4 points
-  return { ok, tenors };
-}
-
-function parseWGBcds5y(html) {
-  // look around “5Y” / “5 Years CDS … bp”
+function parseCDS5Y(html) {
+  // match "... 5Y ... 87 bp(s)" OR "... 5 Years ... 87 bp(s)"
   const m =
-    html.match(/5\s*Years?[^]{0,120}?(\d+(?:[.,]\d+)?)\s*bp/i) ||
-    html.match(/5Y[^]{0,120}?(\d+(?:[.,]\d+)?)\s*bp/i);
-  if (!m) return { ok: false, bps: null };
-  const v = parseFloat(m[1].replace(",", "."));
-  return { ok: isNum(v), bps: v };
+    html.match(/5\s*Years?[^]{0,120}?(\d+(?:[.,]\d+)?)\s*bps?\b/i) ||
+    html.match(/\b5Y\b[^]{0,120}?(\d+(?:[.,]\d+)?)\s*bps?\b/i);
+  const v = m ? num(m[1]) : null;
+  return { ok: v != null, bps: v ?? null };
 }
 
-// ------------------------
-// HTTP JSON helper
-// ------------------------
-function okJson(obj, statusCode = 200) {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Access-Control-Allow-Origin": "*",
-    },
-    body: JSON.stringify(obj),
-  };
-}
-
-// ------------------------
-// Handler
-// ------------------------
+// ---------------------------
+// Main handler
+// ---------------------------
 exports.handler = async (event) => {
   const type = (event.queryStringParameters?.type || "yield").toLowerCase();
   const country = (event.queryStringParameters?.country || "US").toUpperCase();
@@ -218,7 +170,7 @@ exports.handler = async (event) => {
 
   try {
     if (!COUNTRY_SLUG[country]) {
-      return okJson({ error: `Unsupported country "${country}"` }, 400);
+      throw new Error(`Unsupported country "${country}"`);
     }
 
     if (type === "yield") {
@@ -227,16 +179,16 @@ exports.handler = async (event) => {
       debug.url = url;
 
       const html = await getHtml(url);
-      if (debugWanted) debug.htmlSample = html.slice(0, 1000);
+      if (debugWanted) debug.htmlSample = html.slice(0, 800);
 
-      const parsed = parseWGBYields(html, debugWanted ? debug : null);
+      const parsed = parseYieldsRobust(html, debugWanted ? debug : null);
       if (!parsed.ok) {
-        debug.notes.push("Yield parse incomplete; fallback to demo");
+        debug.notes.push(`yield parse incomplete (found=${parsed.found}); fallback demo`);
         return okJson(
           {
             asOf: todayISO(),
             country,
-            tenors: DEMO_TENORS,
+            tenors: { ...DEMO_TENORS },
             src: "demo",
             debug: debugWanted ? debug : undefined,
           },
@@ -262,11 +214,11 @@ exports.handler = async (event) => {
       debug.url = url;
 
       const html = await getHtml(url);
-      if (debugWanted) debug.htmlSample = html.slice(0, 1000);
+      if (debugWanted) debug.htmlSample = html.slice(0, 800);
 
-      const parsed = parseWGBcds5y(html);
+      const parsed = parseCDS5Y(html);
       if (!parsed.ok) {
-        debug.notes.push("CDS parse failed; fallback demo 100bps");
+        debug.notes.push("cds parse failed; fallback 100bps");
         return okJson(
           {
             asOf: todayISO(),
@@ -293,14 +245,12 @@ exports.handler = async (event) => {
 
     return okJson({ error: `Unsupported type "${type}"` }, 400);
   } catch (err) {
-    debug.notes.push(`Error: ${err.message}`);
+    debug.notes.push(`error: ${err.message}`);
     return okJson(
       {
         asOf: todayISO(),
         country,
-        ...(type === "cds"
-          ? { cds5y_bps: 100 }
-          : { tenors: DEMO_TENORS }),
+        ...(type === "cds" ? { cds5y_bps: 100 } : { tenors: { ...DEMO_TENORS } }),
         src: "demo",
         debug: debugWanted ? debug : undefined,
       },
@@ -308,3 +258,18 @@ exports.handler = async (event) => {
     );
   }
 };
+
+// ---------------------------
+// Response helper (CORS)
+// ---------------------------
+function okJson(obj, statusCode = 200) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Access-Control-Allow-Origin": "*",
+    },
+    body: JSON.stringify(obj),
+  };
+}

@@ -1,9 +1,14 @@
 [build]
-  command = ""
   publish = "."
   functions = "netlify/functions"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+[[headers]]
+  for = "/*"
+  [headers.values]
+  Cache-Control = "public, max-age=0, must-revalidate"
+
+# Uncomment this block only if you use client-side routing and want SPA fallback
+# [[redirects]]
+#   from = "/*"
+#   to = "/index.html"
+#   status = 200[build]

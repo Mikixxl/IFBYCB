@@ -1,252 +1,237 @@
 // netlify/functions/market.js
+// Serverless function that returns sovereign YIELD tenors or CDS(5Y) for
+// US, DE, GB, JP, CA. Primary source: worldgovernmentbonds.com (HTML scrape).
 //
-// Usage:
-//   /.netlify/functions/market?type=yield&country=US&h=today
-//   /.netlify/functions/market?type=cds&country=DE&h=today
-// Optional:
-//   &debug=1   -> adds {debug:{...}} with fetch status, lengths, reasons
+// Query params:
+//   type=yield|cds   (default yield)
+//   country=US|DE|GB|JP|CA  (default US)
+//   h=today|1w|1m    (kept for UI compatibility; source is "today")
+//   debug=1          (optional: include scrape URLs and parser notes)
 //
-// Notes:
-// - Tries WGB (WorldGovernmentBonds) first for yields; very light parser.
-// - CDS is best-effort; if parsing fails, returns demo with reason.
-// - Always sets `src` to "live" if a live parse succeeded, else "demo".
-// - Adds CORS so you can open function URLs in the browser.
+// Response for type=yield:
+// { asOf:"YYYY-MM-DD", country:"US", tenors:{ "1M":5.35,... }, src:"live|demo", debug?:{...} }
+//
+// Response for type=cds:
+// { asOf:"YYYY-MM-DD", country:"US", cds5y_bps: 87, src:"live|demo", debug?:{...} }
 
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const CACHE = new Map();
+const fetch = require("node-fetch");
 
-function resp(code, data, debug) {
-  const body = JSON.stringify(debug ? { ...data, debug } : data);
-  return {
-    statusCode: code,
+// --------------------------------------
+// Config
+// --------------------------------------
+const COUNTRY_SLUG = {
+  US: "united-states",
+  DE: "germany",
+  GB: "united-kingdom",
+  JP: "japan",
+  CA: "canada",
+};
+
+const TENOR_LABEL = {
+  "1M": "1 Month",
+  "3M": "3 Months",
+  "6M": "6 Months",
+  "1Y": "1 Year",
+  "2Y": "2 Years",
+  "5Y": "5 Years",
+  "7Y": "7 Years",
+  "10Y": "10 Years",
+  "20Y": "20 Years",
+  "30Y": "30 Years",
+};
+
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
+// Demo curve used as safe fallback (same across countries)
+const DEMO_TENORS = {
+  "1M": 5.35,
+  "3M": 5.25,
+  "6M": 5.15,
+  "1Y": 5.05,
+  "2Y": 4.9,
+  "5Y": 4.7,
+  "7Y": 4.6,
+  "10Y": 4.55,
+  "20Y": 4.5,
+  "30Y": 4.45,
+};
+
+// --------------------------------------
+// Helpers
+// --------------------------------------
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function notEmptyNumber(x) {
+  return Number.isFinite(x) && !Number.isNaN(x);
+}
+
+// find nearest number like "4.55 %" near a label inside HTML
+function findNearestPercent(html, label) {
+  const i = html.toLowerCase().indexOf(label.toLowerCase());
+  if (i < 0) return null;
+  const window = 220; // characters to scan around the label
+  const start = Math.max(0, i - window);
+  const end = Math.min(html.length, i + window);
+  const snippet = html.slice(start, end);
+  const m = snippet.match(/(\d+(?:[.,]\d+)?)\s*%/); // first percentage near the label
+  if (!m) return null;
+  return parseFloat(m[1].replace(",", "."));
+}
+
+function parseWGBYields(html) {
+  const tenors = {};
+  Object.entries(TENOR_LABEL).forEach(([code, lbl]) => {
+    const v = findNearestPercent(html, lbl);
+    if (notEmptyNumber(v)) tenors[code] = v;
+  });
+  // consider success if we found at least 4 tenors
+  const ok = Object.keys(tenors).length >= 4;
+  return { ok, tenors };
+}
+
+function parseWGBcds5y(html) {
+  // look for patterns around "5Y" or "5 Years CDS" with "bp"/"bps"
+  const m =
+    html.match(/5\s*Years?[^]{0,80}?(\d+(?:[.,]\d+)?)\s*bp/i) ||
+    html.match(/5Y[^]{0,80}?(\d+(?:[.,]\d+)?)\s*bp/i);
+  if (!m) return { ok: false, bps: null };
+  const v = parseFloat(m[1].replace(",", "."));
+  return { ok: notEmptyNumber(v), bps: v };
+}
+
+async function getHtml(url) {
+  const res = await fetch(url, {
     headers: {
-      'content-type': 'application/json',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET, OPTIONS',
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.google.com/",
     },
-    body,
-  };
+    redirect: "follow",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return res.text();
 }
 
-function isoToday() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
-
-// ---------- Country helpers ----------
-const COUNTRY_MAP = {
-  US: { name: 'United States', wgb: 'united-states' },
-  DE: { name: 'Germany',        wgb: 'germany' },
-  GB: { name: 'United Kingdom', wgb: 'united-kingdom' },
-  JP: { name: 'Japan',          wgb: 'japan' },
-  CA: { name: 'Canada',         wgb: 'canada' },
-};
-
-// Tenor order we’ll return
-const TENORS = ['1M', '3M', '6M', '1Y', '2Y', '5Y', '7Y', '10Y', '20Y', '30Y'];
-
-// ---------- Demo data (only used on fallback) ----------
-const DEMO_CURVE = {
-  '1M': 5.35, '3M': 5.25, '6M': 5.15, '1Y': 5.05, '2Y': 4.90,
-  '5Y': 4.70, '7Y': 4.60, '10Y': 4.55, '20Y': 4.50, '30Y': 4.45,
-};
-const DEMO_CDS_5Y = 50; // bps
-
-// ---------- Lightweight fetch with retry ----------
-async function fetchText(url, debug, opts = {}) {
-  const headers = {
-    // Some sources block generic bots; this helps a bit.
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    ...opts.headers,
-  };
-
-  let lastErr = null;
-  for (let i = 0; i < (opts.retries ?? 1); i++) {
-    try {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 9000);
-      const res = await fetch(url, { headers, signal: controller.signal });
-      clearTimeout(t);
-      debug.logs.push({ where: 'fetch', url, status: res.status });
-      if (!res.ok) {
-        lastErr = new Error('HTTP ' + res.status);
-        continue;
-      }
-      const txt = await res.text();
-      debug.logs.push({ where: 'fetch', url, length: txt.length });
-      return txt;
-    } catch (e) {
-      lastErr = e;
-      debug.logs.push({ where: 'fetch-error', url, error: String(e) });
-    }
-  }
-  throw lastErr ?? new Error('fetch failed');
-}
-
-// ---------- Parse WGB yield curve (very tolerant) ----------
-function parseWgbYield(html, debug) {
-  // WGB often embeds a small table “Yield Curve” with tenors in first column
-  // and yields in second; also sometimes a JS block with points.
-  // We try multiple strategies, very lax regex.
-
-  // Strategy A: look for table rows like: <td>10Y</td><td>4.55 %</td>
-  const map = {};
-  const tableRe = /<tr[^>]*>\s*<td[^>]*>\s*([0-9]{1,2}Y|[136]M)\s*<\/td>\s*<td[^>]*>\s*([0-9.,]+)\s*%/gi;
-  let m;
-  while ((m = tableRe.exec(html))) {
-    const tenor = m[1].toUpperCase();
-    const val = parseFloat(m[2].replace(',', '.'));
-    if (!isNaN(val)) map[tenor] = val;
-  }
-  debug.logs.push({ where: 'parseWGB-table', found: Object.keys(map).length });
-
-  // Strategy B: points in JS: ["1M",5.35],["3M",5.25],...
-  if (Object.keys(map).length < 3) {
-    const jsPairs = [...html.matchAll(/\["(1M|3M|6M|1Y|2Y|5Y|7Y|10Y|20Y|30Y)"\s*,\s*([0-9.]+)\]/gi)];
-    jsPairs.forEach((p) => {
-      const tenor = p[1].toUpperCase();
-      const val = parseFloat(p[2]);
-      if (!isNaN(val)) map[tenor] = val;
-    });
-    debug.logs.push({ where: 'parseWGB-js', found: jsPairs.length });
-  }
-
-  // Normalize to our TENORS order if we have at least a sensible set
-  const have = TENORS.filter((t) => map[t] != null);
-  if (have.length >= 5) {
-    const out = {};
-    TENORS.forEach((t) => {
-      if (map[t] != null) out[t] = map[t];
-    });
-    return out;
-  }
-  return null;
-}
-
-// ---------- Best-effort CDS parser (placeholder) ----------
-function parseWgbCds(html, debug) {
-  // Many WGB country pages show a CDS 5y in text like: "CDS 5 Years: 75.12 (bp)"
-  const m = html.match(/CDS\s*5\s*Years[^0-9]*([0-9.,]+)\s*\(?bp\)?/i);
-  if (m) {
-    const v = parseFloat(m[1].replace(',', '.'));
-    if (!isNaN(v)) return v;
-  }
-  // Alternative tiny card “5 Years CDS … 75.1”
-  const m2 = html.match(/5\s*Years\s*CDS[^0-9]*([0-9.,]+)/i);
-  if (m2) {
-    const v = parseFloat(m2[1].replace(',', '.'));
-    if (!isNaN(v)) return v;
-  }
-  debug.logs.push({ where: 'parseCDS', found: false });
-  return null;
-}
-
-// ---------- Data loaders ----------
-async function loadYield(country, h, debug) {
-  const info = COUNTRY_MAP[country];
-  if (!info) throw new Error('unsupported country');
-
-  const cacheKey = `y:${country}:${h}`;
-  const now = Date.now();
-  const cached = CACHE.get(cacheKey);
-  if (cached && now - cached.ts < CACHE_TTL_MS) {
-    debug.logs.push({ where: 'cache-hit', key: cacheKey });
-    return { asOf: isoToday(), tenors: cached.data, src: 'live-cache' };
-  }
-
-  // Try WGB
-  const url = `https://www.worldgovernmentbonds.com/country/${info.wgb}/`;
-  let tenors = null;
-  try {
-    const html = await fetchText(url, debug, { retries: 1 });
-    tenors = parseWgbYield(html, debug);
-  } catch (e) {
-    debug.logs.push({ where: 'wgb-fetch-error', error: String(e) });
-  }
-
-  if (tenors) {
-    CACHE.set(cacheKey, { ts: now, data: tenors });
-    return { asOf: isoToday(), tenors, src: 'live' };
-  }
-
-  // Fallback to demo
-  debug.reason = 'yield-fallback-demo';
-  return { asOf: isoToday(), tenors: DEMO_CURVE, src: 'demo' };
-}
-
-async function loadCds(country, h, debug) {
-  const info = COUNTRY_MAP[country];
-  if (!info) throw new Error('unsupported country');
-
-  const cacheKey = `cds:${country}:${h}`;
-  const now = Date.now();
-  const cached = CACHE.get(cacheKey);
-  if (cached && now - cached.ts < CACHE_TTL_MS) {
-    debug.logs.push({ where: 'cache-hit', key: cacheKey });
-    return { asOf: isoToday(), cds5y_bps: cached.data, src: 'live-cache' };
-  }
-
-  const url = `https://www.worldgovernmentbonds.com/country/${info.wgb}/`;
-  let cds = null;
-  try {
-    const html = await fetchText(url, debug, { retries: 1 });
-    cds = parseWgbCds(html, debug);
-  } catch (e) {
-    debug.logs.push({ where: 'wgb-cds-fetch-error', error: String(e) });
-  }
-
-  if (typeof cds === 'number') {
-    CACHE.set(cacheKey, { ts: now, data: cds });
-    return { asOf: isoToday(), cds5y_bps: cds, src: 'live' };
-  }
-
-  // Fallback
-  debug.reason = 'cds-fallback-demo';
-  return { asOf: isoToday(), cds5y_bps: DEMO_CDS_5Y, src: 'demo' };
-}
-
-// ---------- Handler ----------
+// --------------------------------------
+// Main handler
+// --------------------------------------
 exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return resp(200, { ok: true });
-  }
+  const type = (event.queryStringParameters?.type || "yield").toLowerCase();
+  const country = (event.queryStringParameters?.country || "US").toUpperCase();
+  const h = (event.queryStringParameters?.h || "today").toLowerCase();
+  const debugWanted = !!event.queryStringParameters?.debug;
 
-  const q = new URLSearchParams(event.rawQueryString || '');
-  const type = (q.get('type') || 'yield').toLowerCase();
-  const country = (q.get('country') || 'US').toUpperCase();
-  const h = (q.get('h') || 'today').toLowerCase(); // today | 1w | 1m (stored but not used for now)
-  const debugFlag = q.get('debug') === '1';
-
-  const debug = { logs: [], params: { type, country, h } };
+  const debug = { type, country, h, notes: [] };
 
   try {
-    if (!(country in COUNTRY_MAP)) {
-      return resp(400, { error: 'Unsupported country', country }, debugFlag ? debug : undefined);
-    }
-    if (type !== 'yield' && type !== 'cds') {
-      return resp(400, { error: 'Unsupported type', type }, debugFlag ? debug : undefined);
+    if (!COUNTRY_SLUG[country]) {
+      throw new Error(`Unsupported country "${country}"`);
     }
 
-    if (type === 'yield') {
-      const out = await loadYield(country, h, debug);
-      return resp(200, { ...out, country, h }, debugFlag ? debug : undefined);
-    } else {
-      const out = await loadCds(country, h, debug);
-      return resp(200, { ...out, country, h }, debugFlag ? debug : undefined);
+    if (type === "yield") {
+      const slug = COUNTRY_SLUG[country];
+      const url = `https://www.worldgovernmentbonds.com/country/${slug}/`;
+      debug.url = url;
+
+      const html = await getHtml(url);
+      debug.htmlSample = debugWanted ? html.slice(0, 600) : undefined;
+
+      const parsed = parseWGBYields(html);
+      if (!parsed.ok) {
+        debug.notes.push("Yield parse incomplete; fallback to demo");
+        return okJson(
+          {
+            asOf: todayISO(),
+            country,
+            tenors: DEMO_TENORS,
+            src: "demo",
+            debug: debugWanted ? debug : undefined,
+          },
+          200
+        );
+      }
+
+      return okJson(
+        {
+          asOf: todayISO(),
+          country,
+          tenors: parsed.tenors,
+          src: "live",
+          debug: debugWanted ? debug : undefined,
+        },
+        200
+      );
     }
-  } catch (e) {
-    debug.logs.push({ where: 'handler-catch', error: String(e) });
-    // Hard fallback to demo instead of 500
-    if (type === 'yield') {
-      return resp(200, { asOf: isoToday(), tenors: DEMO_CURVE, src: 'demo', country, h },
-        debugFlag ? { ...debug, reason: 'handler-exception-yield' } : undefined);
-    } else {
-      return resp(200, { asOf: isoToday(), cds5y_bps: DEMO_CDS_5Y, src: 'demo', country, h },
-        debugFlag ? { ...debug, reason: 'handler-exception-cds' } : undefined);
+
+    if (type === "cds") {
+      const slug = COUNTRY_SLUG[country];
+      const url = `https://www.worldgovernmentbonds.com/cds-historical-data/${slug}/`;
+      debug.url = url;
+
+      const html = await getHtml(url);
+      debug.htmlSample = debugWanted ? html.slice(0, 600) : undefined;
+
+      const parsed = parseWGBcds5y(html);
+      if (!parsed.ok) {
+        debug.notes.push("CDS parse failed; fallback demo 100bps");
+        return okJson(
+          {
+            asOf: todayISO(),
+            country,
+            cds5y_bps: 100,
+            src: "demo",
+            debug: debugWanted ? debug : undefined,
+          },
+          200
+        );
+      }
+
+      return okJson(
+        {
+          asOf: todayISO(),
+          country,
+          cds5y_bps: parsed.bps,
+          src: "live",
+          debug: debugWanted ? debug : undefined,
+        },
+        200
+      );
     }
+
+    return okJson({ error: `Unsupported type "${type}"` }, 400);
+  } catch (err) {
+    // Hard fallback with clear signal
+    debug.notes.push(`Error: ${err.message}`);
+    return okJson(
+      {
+        asOf: todayISO(),
+        country,
+        ...(type === "cds"
+          ? { cds5y_bps: 100 }
+          : { tenors: DEMO_TENORS }),
+        src: "demo",
+        debug: debugWanted ? debug : undefined,
+      },
+      200
+    );
   }
 };
+
+// --------------------------------------
+// Response helper (CORS friendly)
+// --------------------------------------
+function okJson(obj, statusCode = 200) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Access-Control-Allow-Origin": "*",
+    },
+    body: JSON.stringify(obj),
+  };
+}

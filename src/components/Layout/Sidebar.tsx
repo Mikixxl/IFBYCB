@@ -37,7 +37,7 @@ export default function Sidebar({
             <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
               <span className="text-white text-xs font-bold">TF</span>
             </div>
-            <span className="font-semibold text-gray-900 dark:text-white text-sm">TeamFlow</span>
+            <span className="font-semibold text-gray-900 dark:text-white text-sm">IFC TeamFlow</span>
           </div>
           <button onClick={onToggleDark} className="btn-ghost p-1.5 rounded-lg">
             {darkMode ? <Sun size={16} /> : <Moon size={16} />}

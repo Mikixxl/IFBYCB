@@ -141,7 +141,7 @@ export default function SyncSettings({ projectId }: Props) {
             {[
               'Gehe zu appleid.apple.com und melde dich an',
               'Klicke auf "App-spezifische Passwörter" unter "Anmeldung und Sicherheit"',
-              'Klicke auf "+" und gib "TeamFlow" als Namen ein',
+              'Klicke auf "+" und gib "IFC TeamFlow" als Namen ein',
               'Kopiere das generierte Passwort (Format: xxxx-xxxx-xxxx-xxxx)',
             ].map((step, i) => (
               <li key={i} className="flex items-start gap-2">

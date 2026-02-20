@@ -33,4 +33,4 @@
 # Netlify Functions config
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@supabase/supabase-js"]
+  external_node_modules = ["@supabase/supabase-js", "node-fetch", "cheerio"]

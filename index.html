@@ -1,45 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
-  <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
-
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
-      </div>
-
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
-      </div>
-
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
-      </div>
-
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
-
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
-  </div>
-  <script src="app.js"></script>
-</body>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TeamFlow – Projekt- und Aufgabenverwaltung mit Apple iOS Sync und Team-Chat" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TeamFlow" />
+    <title>TeamFlow – Projektmanagement</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

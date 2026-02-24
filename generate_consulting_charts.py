@@ -3,8 +3,8 @@
 McKinsey / BCG Consulting Chart Generator
 ==========================================
 Generates two files:
-  • McKinsey_Charts.xlsx   – 5 chart sheets, data editable in-place
-  • McKinsey_Slides.pptx   – 5 presentation slides (same charts)
+  • McKinsey_Charts.xlsx   – 6 chart sheets, data editable in-place
+  • McKinsey_Slides.pptx   – 6 presentation slides (same charts)
 
 Requirements:
   pip install xlsxwriter python-pptx
@@ -30,27 +30,26 @@ BLACK       = "#000000"
 
 # ── Shared sample data ─────────────────────────────────────────────────────────
 
-# Chart 1 – Stacked bar (GBS Scope)
-GBS_STAGES = [
-    "Benchmark scope",
-    "Process standardization",
-    "Strategic importance",
-    "System limitations",
-    "Signed-off scope",
-    "Transferred to date",
-    "To be transferred",
+# Chart 1 – GBS Waterfall (stacked columns + floating reduction bars)
+# Exact data from original McKinsey chart
+GBS_CATS = [
+    "Benchmark\nscope",
+    "Process\nstandardization",
+    "Strategic\nimportance",
+    "System\nlimitations",
+    "Signed-off\nscope",
+    "Transferred\nto date",
+    "To be\ntransferred",
 ]
-GBS_FUNCTIONS = ["Sales Support", "Procurement", "Customer Service", "Accounting"]
-GBS_FUNC_COLORS = [DARK_BLUE, MID_BLUE, LIGHT_BLUE, LIGHT_GRAY]
-GBS_DATA = [           # FTE per function per stage
-    [450, 120, 180, 250],
-    [380,  90, 150, 200],
-    [320,  80, 130, 170],
-    [280,  70, 110, 150],
-    [250,  60, 100, 130],
-    [180,  45,  70,  90],
-    [120,  30,  45,  60],
-]
+# Milestone stacked segments (0 for reduction columns)
+GBS_ACCOUNTING   = [89,  0,  0,  0, 66, 45, 21]
+GBS_CUST_SERVICE = [45,  0,  0,  0, 31, 23,  8]
+GBS_PROCUREMENT  = [34,  0,  0,  0, 19, 19,  5]
+GBS_SALES_SUPP   = [25,  0,  0,  0, 13,  8,  0]
+# Floating gray reduction bars: spacer positions the bar, reduction is the height
+GBS_SPACER    = [  0, 172, 151, 129,   0,  0,  0]
+GBS_REDUCTION = [  0,  21,  21,  22,   0,  0,  0]
+GBS_TOTALS    = [193,   0,   0,   0, 129, 95, 34]  # for annotations
 
 # Chart 2 – Diverging bar (Sentiment Survey)
 SURVEY_STATEMENTS = [
@@ -84,6 +83,24 @@ REV_YEARS  = {
     "2021": [0.38, 0.22, 0.16, 0.11, 0.08, 0.05],
     "2024": [0.42, 0.19, 0.15, 0.10, 0.09, 0.05],
 }
+
+# Chart 6 – Mekko / Marimekko (Market landscape)
+# Column width = market size (revenue $M); segment height = share within segment (%)
+MEKKO_SEGMENTS = ["Europe", "North America", "Asia Pacific", "Rest of World"]
+MEKKO_SEG_SIZES = [320, 480, 260, 140]   # market size $M (= column width)
+MEKKO_SEG_COLORS = [DARK_BLUE, MID_BLUE, LIGHT_BLUE, PALE_BLUE]
+# Row labels = product lines; values = % share within each segment (must sum to 100 per col)
+MEKKO_ROWS   = ["Premium", "Mid-Range", "Value", "Other"]
+MEKKO_ROW_COLORS = [DARK_BLUE, MID_BLUE, LIGHT_BLUE, LIGHT_GRAY]
+MEKKO_DATA   = [           # share (%) per row per segment
+    [40, 35, 25, 20],      # Premium
+    [30, 30, 35, 30],      # Mid-Range
+    [20, 25, 30, 35],      # Value
+    [10, 10, 10, 15],      # Other
+]
+# Cumulative x-positions (for Mekko simulation via scatter/area approach)
+# Total market = sum(MEKKO_SEG_SIZES) = 1200
+MEKKO_TOTAL = sum(MEKKO_SEG_SIZES)
 
 # Chart 5 – Range column + Line (Shipment volume)
 SHIP_WEEKS  = ["Wk 1","Wk 2","Wk 3","Wk 4","Wk 5","Wk 6","Wk 7","Wk 8"]
@@ -148,61 +165,99 @@ def build_excel():
         ws.hide_gridlines(2)
         return ws
 
-    # ── Chart 1: Stacked Bar ───────────────────────────────────────────────────
+    # ── Chart 1: GBS Waterfall ────────────────────────────────────────────────
     def chart1():
-        SN = "1 Stacked Bar"
+        SN = "1 GBS Waterfall"
         ws = sheet(SN)
         ws.set_column("A:A", 0.5)
-        ws.set_column("B:B", 26)
-        ws.set_column("C:G", 12)
+        ws.set_column("B:B", 20)
+        ws.set_column("C:I", 10)
 
-        ws.merge_range("B2:G2", "Global Business Services Scope", F["title"])
-        ws.write("B3", "~FTE involved in scope definition process", F["subtitle"])
+        ws.merge_range("B2:I2", "Global Business Services Scope", F["title"])
+        ws.write("B3", "FTE", F["subtitle"])
 
+        # Data table header
         R0, R1 = 4, 5
-        ws.write(R0, 1, "Stage", F["hdr"])
-        for c, fn in enumerate(GBS_FUNCTIONS):
-            ws.write(R0, 2+c, fn, F["hdr"])
-        for r, (stage, row) in enumerate(zip(GBS_STAGES, GBS_DATA)):
-            ws.write(R1+r, 1, stage, F["lbl"])
-            for c, v in enumerate(row):
+        n = len(GBS_CATS)
+        headers = ["Category", "Spacer", "Reduction", "Accounting",
+                   "Customer Service", "Procurement", "Sales Support", "Total"]
+        for c, h in enumerate(headers):
+            ws.write(R0, 1+c, h, F["hdr"])
+
+        all_rows = list(zip(GBS_CATS, GBS_SPACER, GBS_REDUCTION,
+                            GBS_ACCOUNTING, GBS_CUST_SERVICE,
+                            GBS_PROCUREMENT, GBS_SALES_SUPP, GBS_TOTALS))
+        for r, row in enumerate(all_rows):
+            ws.write(R1+r, 1, row[0], F["lbl"])
+            for c, v in enumerate(row[1:]):
                 ws.write(R1+r, 2+c, v, F["num"])
 
-        n = len(GBS_STAGES)
-        chart = wb.add_chart({"type": "bar", "subtype": "stacked"})
-        for i, (fn, color) in enumerate(zip(GBS_FUNCTIONS, GBS_FUNC_COLORS)):
+        chart = wb.add_chart({"type": "column", "subtype": "stacked"})
+
+        # Series 1 – Spacer (invisible, positions reduction bars)
+        chart.add_series({
+            "name":       "Spacer",
+            "categories": [SN, R1, 1, R1+n-1, 1],
+            "values":     [SN, R1, 2, R1+n-1, 2],
+            "fill":       {"color": WHITE},
+            "border":     {"none": True},
+            "data_labels": {"value": False},
+        })
+
+        # Series 2 – Reduction bars (gray, floating)
+        chart.add_series({
+            "name":       "Scope reduction",
+            "categories": [SN, R1, 1, R1+n-1, 1],
+            "values":     [SN, R1, 3, R1+n-1, 3],
+            "fill":       {"color": LIGHT_GRAY},
+            "border":     {"none": True},
+            "data_labels": {
+                "value": True,
+                "font": {"size": 9, "bold": True, "name": "Arial", "color": MID_GRAY},
+            },
+        })
+
+        # Series 3–6 – Stacked milestone segments
+        seg_colors = [BLACK, DARK_BLUE, MID_BLUE, LIGHT_BLUE]
+        seg_names  = ["Accounting", "Customer Service", "Procurement", "Sales Support"]
+        for i, (seg, color) in enumerate(zip(seg_names, seg_colors)):
             chart.add_series({
-                "name":       [SN, R0, 2+i],
+                "name":       seg,
                 "categories": [SN, R1, 1, R1+n-1, 1],
-                "values":     [SN, R1, 2+i, R1+n-1, 2+i],
+                "values":     [SN, R1, 4+i, R1+n-1, 4+i],
                 "fill":       {"color": color},
                 "border":     {"none": True},
                 "data_labels": {
                     "value": True,
                     "font": {
-                        "size": 8, "name": "Arial",
-                        "color": WHITE if color in (DARK_BLUE, MID_BLUE) else BLACK,
+                        "size": 9, "bold": True, "name": "Arial",
+                        "color": WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK,
                     },
                 },
             })
+
         chart.set_title({"none": True})
-        chart.set_legend({"position": "bottom", "font": {"size": 9, "name": "Arial"}})
+        chart.set_legend({
+            "position": "bottom",
+            "font": {"size": 9, "name": "Arial"},
+            "delete_series": [0],   # hide "Spacer" from legend
+        })
         chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
         chart.set_plotarea({"border": {"none": True}, "fill": {"color": WHITE}})
         chart.set_x_axis({
-            "num_font": {"size": 8, "name": "Arial"},
-            "line": {"none": True},
-            "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}},
+            "num_font": {"size": 9, "name": "Arial", "bold": True},
+            "line": {"color": MID_GRAY},
+            "major_gridlines": {"visible": False},
         })
         chart.set_y_axis({
             "num_font": {"size": 8, "name": "Arial"},
             "line": {"none": True},
-            "major_gridlines": {"visible": False},
-            "reverse": True,
+            "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}},
+            "min": 0, "max": 220,
         })
-        chart.set_size({"width": 720, "height": 420})
-        ws.insert_chart("B13", chart)
-        ws.write(R1+n+18, 1, "Source: Internal HR data", F["src"])
+        chart.set_size({"width": 780, "height": 440})
+        ws.insert_chart("B15", chart)
+        ws.write(R1+n+22, 1, "Source: Internal HR data", F["src"])
 
     # ── Chart 2: Diverging Bar ─────────────────────────────────────────────────
     def chart2():
@@ -489,7 +544,79 @@ def build_excel():
         ws.insert_chart("B13", col_chart)
         ws.write(R1+n+18, 1, "Source: Logistics Operations Data 2024", F["src"])
 
-    chart1(); chart2(); chart3(); chart4(); chart5()
+    # ── Chart 6: Mekko / Marimekko ────────────────────────────────────────────
+    def chart6():
+        SN = "6 Mekko"
+        ws = sheet(SN)
+        ws.set_column("A:A", 0.5)
+        ws.set_column("B:B", 18)
+        ws.set_column("C:F", 14)
+
+        ws.merge_range("B2:F2", "Market Landscape by Region & Product Line", F["title"])
+        ws.write("B3", "Column width = market size ($M)  |  Height = share within region (%)", F["subtitle"])
+
+        # Data table
+        R0, R1 = 4, 5
+        ws.write(R0, 1, "Product Line", F["hdr"])
+        for c, seg in enumerate(MEKKO_SEGMENTS):
+            ws.write(R0, 2+c, seg, F["hdr"])
+
+        for r, (row_lbl, row_vals) in enumerate(zip(MEKKO_ROWS, MEKKO_DATA)):
+            ws.write(R1+r, 1, row_lbl, F["lbl"])
+            for c, v in enumerate(row_vals):
+                ws.write(R1+r, 2+c, v/100, F["pct"])
+
+        # Market size row
+        ws.write(R1+len(MEKKO_ROWS)+1, 1, "Market size ($M)", F["lbl"])
+        for c, sz in enumerate(MEKKO_SEG_SIZES):
+            ws.write(R1+len(MEKKO_ROWS)+1, 2+c, sz, F["num"])
+
+        # 100% stacked column chart (Excel approximation of Mekko – widths equal)
+        chart = wb.add_chart({"type": "column", "subtype": "percent_stacked"})
+        n_rows = len(MEKKO_ROWS)
+        for i, (row_lbl, color) in enumerate(zip(MEKKO_ROWS, MEKKO_ROW_COLORS)):
+            chart.add_series({
+                "name":       [SN, R1+i, 1],
+                "categories": [SN, R0,   2, R0,   2+len(MEKKO_SEGMENTS)-1],
+                "values":     [SN, R1+i, 2, R1+i, 2+len(MEKKO_SEGMENTS)-1],
+                "fill":       {"color": color},
+                "border":     {"none": True},
+                "data_labels": {
+                    "percentage": True,
+                    "font": {
+                        "size": 9, "bold": True, "name": "Arial",
+                        "color": WHITE if color in (DARK_BLUE, MID_BLUE, BLACK) else BLACK,
+                    },
+                },
+            })
+
+        # Annotation: market sizes above chart
+        note_fmt = wb.add_format({"font_name": "Arial", "font_size": 8,
+                                   "font_color": DARK_BLUE, "bold": True, "align": "center"})
+        for c, sz in enumerate(MEKKO_SEG_SIZES):
+            ws.write(R0-1, 2+c, f"${sz}M", note_fmt)
+
+        chart.set_title({"none": True})
+        chart.set_legend({"position": "bottom", "font": {"size": 9, "name": "Arial"}})
+        chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_plotarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_x_axis({
+            "num_font": {"size": 9, "name": "Arial", "bold": True},
+            "line": {"none": True},
+            "major_gridlines": {"visible": False},
+        })
+        chart.set_y_axis({
+            "num_font": {"size": 8, "name": "Arial"},
+            "num_format": "0%",
+            "line": {"none": True},
+            "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}},
+        })
+        chart.set_size({"width": 640, "height": 420})
+        ws.insert_chart("B13", chart)
+        ws.write(R1+n_rows+10, 1, "Note: Column widths equal in Excel; see PowerPoint for proportional Mekko", F["src"])
+        ws.write(R1+n_rows+11, 1, "Source: Market Intelligence Report 2024", F["src"])
+
+    chart1(); chart2(); chart3(); chart4(); chart5(); chart6()
     wb.close()
     print("  ✓  McKinsey_Charts.xlsx  created")
 
@@ -591,40 +718,59 @@ def build_pptx():
         series.format.line.color.rgb      = _hex(hex_color)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Slide 1: Stacked Bar  (GBS Scope)
+    # Slide 1: GBS Waterfall
     # ─────────────────────────────────────────────────────────────────────────
     def slide1():
         from pptx.enum.chart import XL_CHART_TYPE
         slide = blank_slide()
-        add_title(slide, "Global Business Services Scope",
-                  "~FTE involved in scope definition process")
+        add_title(slide, "Global Business Services Scope", "FTE")
 
         cd = ChartData()
-        cd.categories = GBS_STAGES
-        for fn, row_data in zip(GBS_FUNCTIONS, zip(*GBS_DATA)):
-            cd.add_series(fn, row_data)
+        cd.categories = GBS_CATS
+
+        cd.add_series("Spacer",           GBS_SPACER)
+        cd.add_series("Scope reduction",  GBS_REDUCTION)
+        cd.add_series("Accounting",       GBS_ACCOUNTING)
+        cd.add_series("Customer Service", GBS_CUST_SERVICE)
+        cd.add_series("Procurement",      GBS_PROCUREMENT)
+        cd.add_series("Sales Support",    GBS_SALES_SUPP)
 
         chart = slide.shapes.add_chart(
-            XL_CHART_TYPE.BAR_STACKED,
+            XL_CHART_TYPE.COLUMN_STACKED,
             Inches(0.4), Inches(1.35),
             Inches(12.5), Inches(5.5),
             cd,
         ).chart
 
-        colors = [DARK_BLUE, MID_BLUE, LIGHT_BLUE, LIGHT_GRAY]
-        for s, color in zip(chart.series, colors):
-            series_color(s, color)
-            s.data_labels.show_value = True
-            s.data_labels.font.size  = Pt(8)
-            s.data_labels.font.name  = "Arial"
+        # Spacer – invisible
+        chart.series[0].format.fill.background()
+        chart.series[0].format.line.fill.background()
+
+        # Reduction – gray
+        series_color(chart.series[1], LIGHT_GRAY)
+        chart.series[1].data_labels.show_value = True
+        chart.series[1].data_labels.font.size  = Pt(9)
+        chart.series[1].data_labels.font.bold  = True
+        chart.series[1].data_labels.font.name  = "Arial"
+
+        # Milestone stacked segments
+        seg_colors = [BLACK, DARK_BLUE, MID_BLUE, LIGHT_BLUE]
+        for i, color in enumerate(seg_colors, start=2):
+            series_color(chart.series[i], color)
+            chart.series[i].data_labels.show_value = True
+            chart.series[i].data_labels.font.size  = Pt(9)
+            chart.series[i].data_labels.font.bold  = True
+            chart.series[i].data_labels.font.name  = "Arial"
+            chart.series[i].data_labels.font.color.rgb = _hex(
+                WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK
+            )
 
         chart.has_legend = True
         chart.legend.position = XL_LEGEND_POSITION.BOTTOM
         chart.legend.include_in_layout = False
         chart.has_title = False
-        chart.value_axis.has_gridlines       = True
-        chart.value_axis.has_minor_gridlines = False
-        chart.category_axis.has_gridlines    = False
+        chart.value_axis.has_gridlines = True
+        chart.category_axis.has_gridlines = False
 
         add_source(slide, "Source: Internal HR data")
 
@@ -823,7 +969,99 @@ def build_pptx():
 
         add_source(slide, "Source: Logistics Operations Data 2024")
 
-    slide1(); slide2(); slide3(); slide4(); slide5()
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 6: Mekko / Marimekko  (proper variable-width columns)
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide6():
+        slide = blank_slide()
+        add_title(slide, "Market Landscape by Region & Product Line",
+                  "Column width = market size ($M)  |  Height = share within region (%)")
+
+        # Chart drawing area on slide
+        CX = Inches(0.9)          # chart left edge
+        CY = Inches(1.4)          # chart top edge
+        CW = Inches(11.5)         # chart total width
+        CH = Inches(5.0)          # chart total height
+
+        total_mkt = sum(MEKKO_SEG_SIZES)
+
+        # Cumulative x offsets
+        cum_x = 0
+        for j, (seg, sz, seg_col) in enumerate(zip(MEKKO_SEGMENTS, MEKKO_SEG_SIZES, MEKKO_SEG_COLORS)):
+            col_w   = CW * sz / total_mkt
+            col_x   = CX + CW * cum_x / total_mkt
+            cum_pct = 0   # cumulative % from top → rows stacked top to bottom
+
+            # Draw each row cell
+            cum_row_pct = 0
+            for i, (row_lbl, color) in enumerate(zip(MEKKO_ROWS, MEKKO_ROW_COLORS)):
+                pct   = MEKKO_DATA[i][j]
+                cell_h = CH * pct / 100
+                cell_y = CY + CH * cum_row_pct / 100
+
+                rect = slide.shapes.add_shape(
+                    1,  # MSO_SHAPE_TYPE.RECTANGLE
+                    col_x, cell_y, col_w - Inches(0.04), cell_h,
+                )
+                rect.fill.solid()
+                rect.fill.fore_color.rgb = _hex(color)
+                rect.line.fill.background()
+
+                # Label inside cell (only if tall enough)
+                if pct >= 8:
+                    txb = slide.shapes.add_textbox(
+                        col_x + Inches(0.05), cell_y + Inches(0.03),
+                        col_w - Inches(0.1),  cell_h - Inches(0.06),
+                    )
+                    tf = txb.text_frame
+                    tf.word_wrap = False
+                    p = tf.paragraphs[0]
+                    p.text = f"{pct}%"
+                    p.font.size      = Pt(10)
+                    p.font.bold      = True
+                    p.font.name      = "Arial"
+                    p.font.color.rgb = _hex(
+                        WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK
+                    )
+
+                cum_row_pct += pct
+
+            # Segment label below chart
+            lbl_txb = slide.shapes.add_textbox(
+                col_x, CY + CH + Inches(0.1), col_w, Inches(0.5),
+            )
+            lf = lbl_txb.text_frame
+            lf.word_wrap = True
+            p = lf.paragraphs[0]
+            p.text = f"{seg}\n${sz}M"
+            p.font.size      = Pt(9)
+            p.font.bold      = True
+            p.font.name      = "Arial"
+            p.font.color.rgb = _hex(DARK_BLUE)
+            p.alignment      = PP_ALIGN.CENTER
+
+            cum_x += sz
+
+        # Row legend on right
+        for i, (row_lbl, color) in enumerate(zip(MEKKO_ROWS, MEKKO_ROW_COLORS)):
+            leg_txb = slide.shapes.add_textbox(
+                CX + CW + Inches(0.15), CY + Inches(i * 0.4),
+                Inches(1.5), Inches(0.35),
+            )
+            leg_txb.fill.solid()
+            leg_txb.fill.fore_color.rgb = _hex(color)
+            lp = leg_txb.text_frame.paragraphs[0]
+            lp.text = row_lbl
+            lp.font.size      = Pt(9)
+            lp.font.name      = "Arial"
+            lp.font.color.rgb = _hex(
+                WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK
+            )
+            lp.alignment = PP_ALIGN.CENTER
+
+        add_source(slide, "Source: Market Intelligence Report 2024")
+
+    slide1(); slide2(); slide3(); slide4(); slide5(); slide6()
     prs.save("McKinsey_Slides.pptx")
     print("  ✓  McKinsey_Slides.pptx   created")
 

@@ -110,6 +110,107 @@ SHIP_AVG    = [100, 105,  97, 110, 108, 101, 118, 113]
 SHIP_ACTUAL = [ 95, 108, 102, 115, 112,  98, 125, 120]
 SHIP_TARGET = [110]*8
 
+# Chart 7 – 2×2 Priority Matrix
+MATRIX_ITEMS = [
+    # (label, ease_0to10, impact_0to10)
+    ("Digital\nCore Platform",     8.0, 9.0),
+    ("Customer 360",               6.5, 8.5),
+    ("Cost Transformation",        7.5, 7.0),
+    ("Talent Upskilling",          4.5, 6.0),
+    ("Process Automation",         8.5, 6.5),
+    ("Org Redesign",               3.0, 8.0),
+    ("Analytics & AI",             5.5, 9.5),
+    ("Supplier Consolidation",     7.0, 5.0),
+    ("ESG Reporting",              6.0, 4.5),
+    ("Legacy Migration",           2.5, 7.0),
+]
+
+# Chart 8 – EBITDA Bridge
+# (label, value, kind)  kind: "start"|"up"|"down"|"total"
+EBITDA_ITEMS = [
+    ("Revenue",              500, "start"),
+    ("Cost of Goods Sold",  -180, "down"),
+    ("Gross Profit",         320, "total"),
+    ("SG&A",                 -70, "down"),
+    ("R&D",                  -45, "down"),
+    ("D&A Add-back",         +32, "up"),
+    ("One-off Items",        -20, "down"),
+    ("EBITDA",               217, "total"),
+]
+
+# Chart 9 – Gantt / Transformation Roadmap
+# (workstream, task, start_week, duration_weeks, color)
+GANTT_DATA = [
+    ("Assessment",  "Current State Analysis",   0,  6, "#002060"),
+    ("Assessment",  "Stakeholder Interviews",    2,  5, "#002060"),
+    ("Design",      "Future State Blueprint",    5,  8, "#1F5FA6"),
+    ("Design",      "Business Case",             7,  6, "#1F5FA6"),
+    ("Pilot",       "Site Preparation",         12,  4, "#9DC3E6"),
+    ("Pilot",       "Pilot Execution",          14,  6, "#9DC3E6"),
+    ("Rollout",     "Wave 1 Deployment",        19,  8, "#70AD47"),
+    ("Rollout",     "Wave 2 Deployment",        25,  8, "#70AD47"),
+    ("Rollout",     "Change Management",        19, 14, "#F39C12"),
+    ("Governance",  "PMO & Tracking",            0, 32, "#D9D9D9"),
+]
+GANTT_TOTAL_WEEKS = 34
+
+# Chart 10 – Harvey Balls (0=empty 1=quarter 2=half 3=three-quarter 4=full)
+HARVEY_COMPANIES = ["McKinsey", "BCG", "Bain", "Deloitte", "Accenture"]
+HARVEY_CRITERIA  = [
+    "Strategy & Vision",
+    "Digital Capability",
+    "Operational Excellence",
+    "M&A Advisory",
+    "Talent & Culture",
+    "Technology Delivery",
+    "Sector Expertise",
+]
+HARVEY_SCORES = [
+    [4, 4, 3, 3, 3],
+    [3, 4, 2, 4, 4],
+    [3, 3, 4, 3, 3],
+    [4, 3, 3, 2, 2],
+    [4, 3, 4, 3, 3],
+    [2, 3, 2, 4, 4],
+    [4, 3, 4, 2, 3],
+]
+
+# Chart 11 – Tornado / Sensitivity  (impact on project NPV, $M)
+TORNADO_DRIVERS = [
+    ("Revenue growth rate",        -48, +52),
+    ("WACC / Discount rate",       -38, +30),
+    ("EBITDA margin",              -35, +38),
+    ("Exit multiple (EV/EBITDA)",  -32, +40),
+    ("Working capital intensity",  -22, +18),
+    ("Capex intensity",            -18, +15),
+    ("Tax rate",                   -14, +12),
+    ("Cost of goods sold",         -20, +16),
+]
+
+# Chart 12 – Sankey (Income Statement, values in $B)
+SANKEY_SEGS = [
+    ("Sales",                    2.1, "#26C6DA"),
+    ("Service",                  2.3, "#EC407A"),
+    ("Platform & Other",         1.8, "#AB47BC"),
+    ("Marketing & Commerce",     1.3, "#FFA726"),
+    ("Integration & Analytics",  1.3, "#42A5F5"),
+]
+SANKEY_TOTAL_REV    = 9.3
+SANKEY_SUB_SUPPORT  = 8.8
+SANKEY_PROF_SVCS    = 0.5
+SANKEY_GROSS_PROFIT = 7.2
+SANKEY_COR          = 2.1
+SANKEY_OP_PROFIT    = 1.8
+SANKEY_OP_EXP       = 5.4
+SANKEY_NET_PROFIT   = 1.4
+SANKEY_TAX          = 0.4
+SANKEY_OPEX_DETAIL  = [
+    ("Sales & Marketing",  3.2, "#EF5350"),
+    ("R&D",                1.3, "#EF9A9A"),
+    ("G&A",                0.7, "#FFCDD2"),
+    ("Restructuring",      0.2, "#FF8A80"),
+]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  EXCEL WORKBOOK

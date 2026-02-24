@@ -3,8 +3,8 @@
 McKinsey / BCG Consulting Chart Generator
 ==========================================
 Generates two files:
-  • McKinsey_Charts.xlsx   – 6 chart sheets, data editable in-place
-  • McKinsey_Slides.pptx   – 6 presentation slides (same charts)
+  • McKinsey_Charts.xlsx   – 12 chart sheets, data editable in-place
+  • McKinsey_Slides.pptx   – 12 presentation slides (same charts)
 
 Requirements:
   pip install xlsxwriter python-pptx
@@ -210,6 +210,126 @@ SANKEY_OPEX_DETAIL  = [
     ("G&A",                0.7, "#FFCDD2"),
     ("Restructuring",      0.2, "#FF8A80"),
 ]
+
+
+def _make_sankey_png():
+    """Render Income Statement Sankey -> PNG BytesIO (requires matplotlib)."""
+    import io
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib.path import Path
+    except ImportError:
+        return None
+
+    W, H    = 16.0, 9.0
+    fig     = plt.figure(figsize=(W, H), facecolor="white")
+    ax      = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+    ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
+
+    SCALE = 7.0 / SANKEY_TOTAL_REV
+    Y0    = 0.75
+
+    def vh(v): return v * SCALE
+
+    def ribbon(x1, y1b, y1t, x2, y2b, y2t, color, alpha=0.45):
+        mx = (x1 + x2) / 2
+        verts = [(x1,y1b),(mx,y1b),(mx,y2b),(x2,y2b),(x2,y2t),(mx,y2t),(mx,y1t),(x1,y1t),(x1,y1b)]
+        codes = [Path.MOVETO, Path.CURVE4,Path.CURVE4,Path.CURVE4,
+                 Path.LINETO, Path.CURVE4,Path.CURVE4,Path.CURVE4, Path.CLOSEPOLY]
+        ax.add_patch(mpatches.PathPatch(Path(verts,codes), facecolor=color, edgecolor="none", alpha=alpha))
+
+    def nbar(x, yb, ht, color, w=0.20):
+        ax.add_patch(plt.Rectangle((x-w/2,yb), w, ht, facecolor=color, edgecolor="white", linewidth=1.5, zorder=5))
+
+    def lbl(x, y, text, color="#333", fs=9, ha="center", bold=False):
+        ax.text(x, y, text, ha=ha, va="center", fontsize=fs, color=color,
+                fontweight="bold" if bold else "normal")
+
+    X = [1.0, 3.1, 5.2, 7.3, 10.1, 13.2]
+
+    # Stage 0 - revenue segments
+    y = Y0; seg_ys = []
+    for _, v, _ in SANKEY_SEGS:
+        seg_ys.append((y, y+vh(v))); y += vh(v)
+    for (yb,yt),(_, _, c) in zip(seg_ys, SANKEY_SEGS):
+        nbar(X[0], yb, yt-yb, c)
+    for (yb,yt),(name,v,c) in zip(seg_ys, SANKEY_SEGS):
+        lbl(X[0]-0.75,(yb+yt)/2,f"{name}\n${v}B",color=c,fs=8,ha="right")
+
+    # Stage 1 - sub/support + prof services
+    sub_b=Y0; sub_t=sub_b+vh(SANKEY_SUB_SUPPORT)
+    pro_b=sub_t; pro_t=pro_b+vh(SANKEY_PROF_SVCS)
+    y_dst=sub_b
+    for (yb,yt),(_,v,c) in zip(seg_ys,SANKEY_SEGS):
+        ribbon(X[0]+0.10,yb,yt,X[1]-0.10,y_dst,y_dst+vh(v),c,0.35); y_dst+=vh(v)
+    nbar(X[1],sub_b,sub_t-sub_b,"#1565C0"); nbar(X[1],pro_b,pro_t-pro_b,"#283593")
+    lbl(X[1]+0.65,(sub_b+sub_t)/2,f"Subscription\n& Support\n${SANKEY_SUB_SUPPORT}B",
+        color="#0D47A1",fs=8,ha="left",bold=True)
+    lbl(X[1]+0.65,(pro_b+pro_t)/2,f"Prof. Services\n${SANKEY_PROF_SVCS}B",
+        color="#1A237E",fs=7.5,ha="left")
+
+    # Stage 2 - total revenue
+    rev_b=Y0; rev_t=rev_b+vh(SANKEY_TOTAL_REV)
+    ribbon(X[1]+0.10,sub_b,sub_t,X[2]-0.10,rev_b,rev_b+vh(SANKEY_SUB_SUPPORT),"#1565C0",0.32)
+    ribbon(X[1]+0.10,pro_b,pro_t,X[2]-0.10,rev_b+vh(SANKEY_SUB_SUPPORT),rev_t,"#283593",0.32)
+    nbar(X[2],rev_b,rev_t-rev_b,"#1976D2")
+    lbl(X[2],rev_t+0.32,f"Revenue\n${SANKEY_TOTAL_REV}B",color="#0D47A1",fs=11,bold=True)
+
+    # Stage 3 - gross profit + CoR
+    cor_b=rev_b; cor_t=cor_b+vh(SANKEY_COR)
+    gp_b=cor_t; gp_t=gp_b+vh(SANKEY_GROSS_PROFIT)
+    ribbon(X[2]+0.10,rev_b,cor_t,X[3]-0.10,cor_b,cor_t,"#C62828",0.38)
+    ribbon(X[2]+0.10,cor_t,rev_t,X[3]-0.10,gp_b,gp_t,"#2E7D32",0.38)
+    nbar(X[3],cor_b,cor_t-cor_b,"#C62828"); nbar(X[3],gp_b,gp_t-gp_b,"#388E3C")
+    lbl(X[3],gp_t+0.32,
+        f"Gross Profit  ${SANKEY_GROSS_PROFIT}B  |  {SANKEY_GROSS_PROFIT/SANKEY_TOTAL_REV*100:.0f}% margin",
+        color="#1B5E20",fs=9.5,bold=True)
+    lbl(X[3],(cor_b+cor_t)/2,f"Cost of\nRevenue\n(${SANKEY_COR}B)",color="#B71C1C",fs=8)
+
+    # Stage 4 - op profit + opex
+    opex_b=gp_b; opex_t=opex_b+vh(SANKEY_OP_EXP)
+    op_b=opex_t; op_t=op_b+vh(SANKEY_OP_PROFIT)
+    ribbon(X[3]+0.10,gp_b,opex_t,X[4]-0.10,opex_b,opex_t,"#C62828",0.32)
+    ribbon(X[3]+0.10,opex_t,gp_t,X[4]-0.10,op_b,op_t,"#2E7D32",0.38)
+    ribbon(X[3]+0.10,cor_b,cor_t,X[4]-0.10,cor_b,cor_t,"#C62828",0.18)
+    nbar(X[4],opex_b,opex_t-opex_b,"#D32F2F"); nbar(X[4],op_b,op_t-op_b,"#388E3C")
+    lbl(X[4]-0.6,(opex_b+opex_t)/2,f"Operating\nExpenses\n(${SANKEY_OP_EXP}B)",
+        color="#B71C1C",fs=9,ha="right",bold=True)
+    lbl(X[4]-0.6,(op_b+op_t)/2,
+        f"Operating Profit\n${SANKEY_OP_PROFIT}B  {SANKEY_OP_PROFIT/SANKEY_TOTAL_REV*100:.0f}%",
+        color="#1B5E20",fs=8.5,ha="right",bold=True)
+
+    # Stage 5 - net profit + tax; opex breakdown
+    net_b=op_b; net_t=net_b+vh(SANKEY_NET_PROFIT)
+    tax_b=net_t; tax_t=tax_b+vh(SANKEY_TAX)
+    ribbon(X[4]+0.10,op_b,net_t,X[5]-0.10,net_b,net_t,"#2E7D32",0.48)
+    ribbon(X[4]+0.10,net_t,op_t,X[5]-0.10,tax_b,tax_t,"#C62828",0.32)
+    nbar(X[5],net_b,net_t-net_b,"#388E3C"); nbar(X[5],tax_b,tax_t-tax_b,"#EF5350")
+    lbl(X[5]+0.65,(net_b+net_t)/2,
+        f"Net Profit  ${SANKEY_NET_PROFIT}B\n{SANKEY_NET_PROFIT/SANKEY_TOTAL_REV*100:.0f}% net margin",
+        color="#1B5E20",fs=9.5,ha="left",bold=True)
+    lbl(X[5]+0.65,(tax_b+tax_t)/2,f"Tax  (${SANKEY_TAX}B)",color="#C62828",fs=8,ha="left")
+    y_od=opex_b
+    for name,v,c in SANKEY_OPEX_DETAIL:
+        ribbon(X[4]+0.10,y_od,y_od+vh(v),X[5]-0.10,y_od,y_od+vh(v),c,0.38)
+        nbar(X[5],y_od,vh(v),c)
+        if vh(v)>0.10:
+            lbl(X[5]+0.65,y_od+vh(v)/2,f"{name}  (${v}B)  {v/SANKEY_TOTAL_REV*100:.0f}%",
+                color="#B71C1C",fs=7.5,ha="left")
+        y_od+=vh(v)
+    nbar(X[5],cor_b,cor_t-cor_b,"#FFCDD2")
+    lbl(X[5]+0.65,(cor_b+cor_t)/2,f"Cost of Rev.\n(${SANKEY_COR}B)",color="#B71C1C",fs=7.5,ha="left")
+
+    ax.text(W/2,H-0.4,"Income Statement Sankey  -  FY 2024  ($B)",
+            ha="center",va="center",fontsize=14,fontweight="bold",color="#0D47A1")
+
+    buf = io.BytesIO()
+    fig.savefig(buf,format="png",dpi=150,bbox_inches="tight",facecolor="white")
+    plt.close(fig); buf.seek(0)
+    return buf
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -717,7 +837,278 @@ def build_excel():
         ws.write(R1+n_rows+10, 1, "Note: Column widths equal in Excel; see PowerPoint for proportional Mekko", F["src"])
         ws.write(R1+n_rows+11, 1, "Source: Market Intelligence Report 2024", F["src"])
 
-    chart1(); chart2(); chart3(); chart4(); chart5(); chart6()
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 7: 2×2 Priority Matrix
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart7():
+        SN = "7_Priority_Matrix"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(MID_BLUE)
+        ws.set_column(0, 0, 24)
+        ws.set_column(1, 2, 12)
+        ws.write(0, 0, "2×2 Priority Matrix", F["title"])
+        ws.write(1, 0, "Initiative", F["hdr"])
+        ws.write(1, 1, "Impl. Ease (0-10)", F["hdr"])
+        ws.write(1, 2, "Business Impact (0-10)", F["hdr"])
+        for r, (lbl, ease, impact) in enumerate(MATRIX_ITEMS):
+            ws.write(2+r, 0, lbl.replace("\n", " "), F["lbl"])
+            ws.write(2+r, 1, ease, F["num"])
+            ws.write(2+r, 2, impact, F["num"])
+        chart = wb.add_chart({"type": "scatter"})
+        chart.add_series({
+            "name":       "Initiatives",
+            "categories": [SN, 2, 1, 2+len(MATRIX_ITEMS)-1, 1],
+            "values":     [SN, 2, 2, 2+len(MATRIX_ITEMS)-1, 2],
+            "marker": {"type": "circle", "size": 8,
+                       "fill": {"color": DARK_BLUE}, "border": {"color": WHITE}},
+        })
+        # Quadrant reference lines
+        for dummy_y, ref_name in [(5, "Ease=5"), (5, "Impact=5")]:
+            pass  # reference lines via series
+        chart.add_series({
+            "name": "_ref_v",
+            "categories": [SN, 2, 1, 2, 1],
+            "values":     [SN, 2, 1, 2, 1],
+            "line": {"color": MID_GRAY, "dash_type": "dash", "width": 1},
+            "marker": {"type": "none"},
+        })
+        chart.set_title({"name": "2×2 Initiative Priority Matrix"})
+        chart.set_x_axis({"name": "Implementation Ease →", "min": 0, "max": 10,
+                          "crossing": 5,
+                          "num_font": {"size": 9, "name": "Arial"},
+                          "name_font": {"size": 10, "name": "Arial", "bold": True}})
+        chart.set_y_axis({"name": "Business Impact →", "min": 0, "max": 10,
+                          "crossing": 5,
+                          "num_font": {"size": 9, "name": "Arial"},
+                          "name_font": {"size": 10, "name": "Arial", "bold": True}})
+        chart.set_legend({"none": True})
+        chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_plotarea({"border": {"color": LIGHT_GRAY}, "fill": {"color": WHITE}})
+        chart.set_size({"width": 520, "height": 420})
+        ws.insert_chart("E2", chart)
+        ws.write(2+len(MATRIX_ITEMS)+1, 0, "Source: Strategic Planning Workshop 2024", F["src"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 8: EBITDA Bridge
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart8():
+        SN = "8_EBITDA_Bridge"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(DARK_BLUE)
+        ws.set_column(0, 0, 22)
+        ws.set_column(1, 3, 10)
+        ws.write(0, 0, "EBITDA Bridge", F["title"])
+        ws.write(1, 0, "Item", F["hdr"])
+        ws.write(1, 1, "Value ($M)", F["hdr"])
+        ws.write(1, 2, "Spacer", F["hdr"])
+        ws.write(1, 3, "Bar", F["hdr"])
+
+        running = 0
+        spacers, bars, colors_list, labels_list = [], [], [], []
+        for lbl_txt, val, kind in EBITDA_ITEMS:
+            if kind == "start":
+                spacers.append(0);      bars.append(val);  running = val
+                colors_list.append(DARK_BLUE)
+            elif kind == "total":
+                spacers.append(0);      bars.append(running)
+                colors_list.append(DARK_BLUE)
+                running = running  # stays
+            elif kind == "up":
+                spacers.append(running); bars.append(val);  running += val
+                colors_list.append("#70AD47")
+            else:  # down
+                running += val
+                spacers.append(running); bars.append(-val)
+                colors_list.append("#C00000")
+            labels_list.append(lbl_txt)
+
+        for r, (lbl_txt, sp, ba, val_orig) in enumerate(zip(labels_list, spacers, bars, [v for _,v,_ in EBITDA_ITEMS])):
+            ws.write(2+r, 0, lbl_txt, F["lbl"])
+            ws.write(2+r, 1, val_orig, F["num"])
+            ws.write(2+r, 2, sp, F["num"])
+            ws.write(2+r, 3, ba, F["num"])
+
+        chart = wb.add_chart({"type": "bar", "subtype": "stacked"})
+        chart.add_series({
+            "name": "Spacer",
+            "categories": [SN, 2, 0, 2+len(EBITDA_ITEMS)-1, 0],
+            "values":     [SN, 2, 2, 2+len(EBITDA_ITEMS)-1, 2],
+            "fill": {"none": True}, "border": {"none": True},
+        })
+        chart.add_series({
+            "name": "Value",
+            "categories": [SN, 2, 0, 2+len(EBITDA_ITEMS)-1, 0],
+            "values":     [SN, 2, 3, 2+len(EBITDA_ITEMS)-1, 3],
+            "fill": {"color": DARK_BLUE}, "border": {"none": True},
+            "data_labels": {"value": True, "font": {"size": 9, "bold": True, "name": "Arial", "color": WHITE}},
+        })
+        chart.set_title({"name": "EBITDA Bridge  ($M)"})
+        chart.set_x_axis({"num_font": {"size": 9, "name": "Arial"}, "line": {"none": True},
+                          "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}}})
+        chart.set_y_axis({"num_font": {"size": 9, "name": "Arial"}, "line": {"none": True},
+                          "major_gridlines": {"visible": False}})
+        chart.set_legend({"none": True})
+        chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_plotarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_size({"width": 560, "height": 400})
+        ws.insert_chart("F2", chart)
+        ws.write(2+len(EBITDA_ITEMS)+1, 0, "Source: Management Accounts FY2024", F["src"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 9: Gantt / Roadmap
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart9():
+        SN = "9_Gantt_Roadmap"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(MID_BLUE)
+        ws.set_column(0, 0, 22)
+        ws.set_column(1, 1, 26)
+        ws.set_column(2, 3, 10)
+        ws.write(0, 0, "Transformation Roadmap", F["title"])
+        ws.write(1, 0, "Workstream", F["hdr"])
+        ws.write(1, 1, "Task", F["hdr"])
+        ws.write(1, 2, "Start (week)", F["hdr"])
+        ws.write(1, 3, "Duration (weeks)", F["hdr"])
+        for r, (ws_name, task, start, dur, color) in enumerate(GANTT_DATA):
+            ws.write(2+r, 0, ws_name, F["lbl"])
+            ws.write(2+r, 1, task, F["lbl"])
+            ws.write(2+r, 2, start, F["num"])
+            ws.write(2+r, 3, dur, F["num"])
+        chart = wb.add_chart({"type": "bar", "subtype": "stacked"})
+        chart.add_series({
+            "name": "Start",
+            "categories": [SN, 2, 1, 2+len(GANTT_DATA)-1, 1],
+            "values":     [SN, 2, 2, 2+len(GANTT_DATA)-1, 2],
+            "fill": {"none": True}, "border": {"none": True},
+        })
+        chart.add_series({
+            "name": "Duration",
+            "categories": [SN, 2, 1, 2+len(GANTT_DATA)-1, 1],
+            "values":     [SN, 2, 3, 2+len(GANTT_DATA)-1, 3],
+            "fill": {"color": DARK_BLUE}, "border": {"none": True},
+            "data_labels": {"value": False},
+        })
+        chart.set_title({"name": "Transformation Roadmap  (weeks)"})
+        chart.set_x_axis({"name": "Week", "min": 0, "max": GANTT_TOTAL_WEEKS,
+                          "num_font": {"size": 9, "name": "Arial"},
+                          "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}}})
+        chart.set_y_axis({"num_font": {"size": 9, "name": "Arial"}, "line": {"none": True},
+                          "major_gridlines": {"visible": False}})
+        chart.set_legend({"none": True})
+        chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_plotarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_size({"width": 620, "height": 400})
+        ws.insert_chart("F2", chart)
+        ws.write(2+len(GANTT_DATA)+1, 0, "Source: Programme Management Office", F["src"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 10: Harvey Balls
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart10():
+        SYMBOLS = ["○", "◔", "◑", "◕", "●"]
+        SN = "10_Harvey_Balls"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(LIGHT_BLUE)
+        ws.set_column(0, 0, 26)
+        for c in range(1, len(HARVEY_COMPANIES)+1):
+            ws.set_column(c, c, 14)
+        ws.set_row(0, 22)
+        ws.write(0, 0, "Capability Benchmarking", F["title"])
+        ws.write(1, 0, "Capability", F["hdr"])
+        big_fmt = wb.add_format({
+            "font_name": "Arial", "font_size": 18,
+            "align": "center", "valign": "vcenter",
+            "font_color": DARK_BLUE, "bold": True, "border": 1, "border_color": LIGHT_GRAY,
+        })
+        hdr_fmt = wb.add_format({
+            "font_name": "Arial", "font_size": 10, "bold": True,
+            "align": "center", "font_color": WHITE, "bg_color": DARK_BLUE,
+            "border": 1, "border_color": WHITE,
+        })
+        crit_fmt = wb.add_format({
+            "font_name": "Arial", "font_size": 10,
+            "align": "left", "valign": "vcenter",
+            "border": 1, "border_color": LIGHT_GRAY,
+        })
+        for c, co in enumerate(HARVEY_COMPANIES):
+            ws.write(1, 1+c, co, hdr_fmt)
+        for r, (crit, row_scores) in enumerate(zip(HARVEY_CRITERIA, HARVEY_SCORES)):
+            ws.set_row(2+r, 26)
+            ws.write(2+r, 0, crit, crit_fmt)
+            for c, score in enumerate(row_scores):
+                ws.write(2+r, 1+c, SYMBOLS[score], big_fmt)
+        # Legend
+        legend_row = 2 + len(HARVEY_CRITERIA) + 1
+        ws.write(legend_row, 0, "Legend:", F["lbl"])
+        for i, (s, desc) in enumerate(zip(SYMBOLS, ["No capability","Basic","Moderate","Strong","Leading"])):
+            ws.write(legend_row, 1+i, f"{s} {desc}", wb.add_format(
+                {"font_name": "Arial", "font_size": 10, "align": "center",
+                 "font_color": DARK_BLUE}))
+        ws.write(legend_row+1, 0, "Source: Internal capability assessment", F["src"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 11: Tornado / Sensitivity
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart11():
+        SN = "11_Tornado"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(DARK_BLUE)
+        ws.set_column(0, 0, 26)
+        ws.set_column(1, 2, 12)
+        ws.write(0, 0, "Sensitivity Analysis – NPV Impact ($M)", F["title"])
+        ws.write(1, 0, "Driver", F["hdr"])
+        ws.write(1, 1, "Downside ($M)", F["hdr"])
+        ws.write(1, 2, "Upside ($M)", F["hdr"])
+        # Sort by total range descending
+        sorted_drivers = sorted(TORNADO_DRIVERS, key=lambda x: abs(x[1])+abs(x[2]), reverse=True)
+        for r, (drv, low, high) in enumerate(sorted_drivers):
+            ws.write(2+r, 0, drv, F["lbl"])
+            ws.write(2+r, 1, low, F["num"])
+            ws.write(2+r, 2, high, F["num"])
+        chart = wb.add_chart({"type": "bar"})
+        chart.add_series({
+            "name": "Downside",
+            "categories": [SN, 2, 0, 2+len(sorted_drivers)-1, 0],
+            "values":     [SN, 2, 1, 2+len(sorted_drivers)-1, 1],
+            "fill": {"color": RED}, "border": {"none": True},
+            "data_labels": {"value": True, "font": {"size": 8, "bold": True, "name": "Arial", "color": WHITE}},
+        })
+        chart.add_series({
+            "name": "Upside",
+            "categories": [SN, 2, 0, 2+len(sorted_drivers)-1, 0],
+            "values":     [SN, 2, 2, 2+len(sorted_drivers)-1, 2],
+            "fill": {"color": GREEN}, "border": {"none": True},
+            "data_labels": {"value": True, "font": {"size": 8, "bold": True, "name": "Arial", "color": WHITE}},
+        })
+        chart.set_title({"name": "NPV Sensitivity  ($M)  –  Base Case = $217M"})
+        chart.set_x_axis({"num_font": {"size": 9, "name": "Arial"}, "crossing": 0,
+                          "major_gridlines": {"visible": True, "line": {"color": LIGHT_GRAY, "width": 0.5}}})
+        chart.set_y_axis({"num_font": {"size": 9, "name": "Arial"}, "line": {"none": True},
+                          "major_gridlines": {"visible": False}})
+        chart.set_legend({"position": "bottom", "font": {"size": 9, "name": "Arial"}})
+        chart.set_chartarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_plotarea({"border": {"none": True}, "fill": {"color": WHITE}})
+        chart.set_size({"width": 560, "height": 420})
+        ws.insert_chart("D2", chart)
+        ws.write(2+len(sorted_drivers)+1, 0, "Source: Financial model – sensitivity run", F["src"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sheet 12: Sankey (matplotlib image)
+    # ─────────────────────────────────────────────────────────────────────────
+    def chart12():
+        SN = "12_Sankey"
+        ws = wb.add_worksheet(SN)
+        ws.set_tab_color(MID_BLUE)
+        ws.write(0, 0, "Income Statement Sankey", F["title"])
+        png = _make_sankey_png()
+        if png:
+            import io as _io
+            ws.insert_image("A3", "sankey.png", {"image_data": png, "x_scale": 0.85, "y_scale": 0.85})
+        else:
+            ws.write(2, 0, "[Install matplotlib to see Sankey: pip install matplotlib]", F["src"])
+        ws.write(60, 0, "Source: Company financials FY2024", F["src"])
+
+    chart1(); chart2(); chart3(); chart4(); chart5(); chart6(); chart7(); chart8(); chart9(); chart10(); chart11(); chart12()
     wb.close()
     print("  ✓  McKinsey_Charts.xlsx  created")
 
@@ -1279,7 +1670,422 @@ def build_pptx():
 
         add_source(slide, "Source: Market Intelligence Report 2024")
 
-    slide1(); slide2(); slide3(); slide4(); slide5(); slide6()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 7: 2×2 Priority Matrix
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide7():
+        from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+        slide = blank_slide()
+        add_title(slide, "Initiative Priority Matrix", "Implementation Ease vs. Business Impact")
+
+        # Chart canvas
+        CX = Inches(0.6)
+        CY = Inches(1.4)
+        CW = Inches(11.8)
+        CH = Inches(5.3)
+
+        # Quadrant backgrounds
+        quad_colors = [
+            ("#EAF4FB", CX,        CY,        CW/2, CH/2),   # top-left  = Hard/High
+            ("#EBF7E6", CX+CW/2,   CY,        CW/2, CH/2),   # top-right = Easy/High  *
+            ("#F5F5F5", CX,        CY+CH/2,   CW/2, CH/2),   # bot-left  = Hard/Low
+            ("#FEF9E7", CX+CW/2,   CY+CH/2,   CW/2, CH/2),   # bot-right = Easy/Low
+        ]
+        quad_labels = [
+            ("Strategic\nBets",   CX+CW/4,     CY+CH/4),
+            ("Quick Wins *",      CX+3*CW/4,   CY+CH/4),
+            ("Avoid / Defer",     CX+CW/4,     CY+3*CH/4),
+            ("Fill-ins",          CX+3*CW/4,   CY+3*CH/4),
+        ]
+        for color, qx, qy, qw, qh in quad_colors:
+            rect = slide.shapes.add_shape(1, int(qx), int(qy), int(qw), int(qh))
+            rect.fill.solid(); rect.fill.fore_color.rgb = _hex(color)
+            rect.line.color.rgb = _hex(LIGHT_GRAY); rect.line.width = Pt(0.5)
+
+        for qlbl, qx, qy in quad_labels:
+            txb = slide.shapes.add_textbox(int(qx-Inches(0.8)), int(qy-Inches(0.2)), int(Inches(1.6)), int(Inches(0.4)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = qlbl; p.font.size = Pt(9); p.font.name = "Arial"
+            p.font.color.rgb = _hex(MID_GRAY); p.font.italic = True
+            p.alignment = PP_ALIGN.CENTER
+
+        # Midpoint axis lines
+        for conn_coords in [
+            (int(CX), int(CY+CH/2), int(CX+CW), int(CY+CH/2)),
+            (int(CX+CW/2), int(CY), int(CX+CW/2), int(CY+CH)),
+        ]:
+            ln = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, *conn_coords)
+            ln.line.color.rgb = _hex(MID_GRAY); ln.line.width = Pt(0.75)
+
+        # Plot dots + labels  (ease 0-10 -> x, impact 0-10 -> y)
+        def px(ease):   return int(CX + CW * ease / 10)
+        def py(impact): return int(CY + CH * (1 - impact / 10))
+
+        colors_by_quadrant = {
+            (True, True):   DARK_BLUE,
+            (True, False):  MID_BLUE,
+            (False, True):  MID_BLUE,
+            (False, False): MID_GRAY,
+        }
+        for label_txt, ease, impact in MATRIX_ITEMS:
+            easy  = ease   > 5
+            high  = impact > 5
+            color = colors_by_quadrant[(easy, high)]
+            cx_, cy_ = px(ease), py(impact)
+            dot = slide.shapes.add_shape(9, cx_-int(Inches(0.15)), cy_-int(Inches(0.15)),
+                                          int(Inches(0.3)), int(Inches(0.3)))
+            dot.fill.solid(); dot.fill.fore_color.rgb = _hex(color)
+            dot.line.color.rgb = _hex(WHITE); dot.line.width = Pt(0.5)
+
+            # Label offset: prefer right, flip if near edge
+            lx = cx_ + int(Inches(0.18))
+            if ease > 8.5: lx = cx_ - int(Inches(1.4))
+            ly = cy_ - int(Inches(0.2))
+            txb = slide.shapes.add_textbox(lx, ly, int(Inches(1.2)), int(Inches(0.4)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = label_txt.replace("\n", " ")
+            p.font.size = Pt(8); p.font.name = "Arial"
+            p.font.color.rgb = _hex(color); p.font.bold = True
+
+        # Axis labels
+        for lbl_txt, x, y in [
+            ("<- Harder  |  Implementation Ease  |  Easier ->", int(CX+CW/2), int(CY+CH+Inches(0.15))),
+            ("Low Impact", int(CX-Inches(0.5)), int(CY+3*CH/4)),
+            ("High Impact", int(CX-Inches(0.55)), int(CY+CH/4)),
+        ]:
+            txb = slide.shapes.add_textbox(int(x-Inches(2)), int(y-Inches(0.2)), int(Inches(4)), int(Inches(0.35)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = lbl_txt; p.font.size = Pt(9); p.font.name = "Arial"
+            p.font.color.rgb = _hex(DARK_GRAY); p.alignment = PP_ALIGN.CENTER
+
+        add_source(slide, "Source: Strategic Planning Workshop 2024")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 8: EBITDA Bridge (horizontal waterfall)
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide8():
+        from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+        slide = blank_slide()
+        add_title(slide, "EBITDA Bridge", "$M")
+
+        # Canvas (horizontal - values run left to right)
+        CX   = Inches(1.5)
+        CY   = Inches(1.5)
+        CW   = Inches(10.8)
+        CH   = Inches(4.8)
+        XMAX = 550   # x-axis max (slightly above 500)
+        BAR_H_EACH = int(CH / (len(EBITDA_ITEMS) + 0.5))
+        BH = int(BAR_H_EACH * 0.65)
+        GAP = int(BAR_H_EACH * 0.175)
+
+        def xc(v): return int(CX + CW * v / XMAX)
+
+        COLOR_START = DARK_BLUE
+        COLOR_UP    = "#70AD47"
+        COLOR_DOWN  = "#C00000"
+        COLOR_TOTAL = DARK_BLUE
+
+        running = 0
+        for i, (lbl_txt, val, kind) in enumerate(EBITDA_ITEMS):
+            by = int(CY + GAP + i * BAR_H_EACH)
+            if kind == "start":
+                bx = xc(0); bw = xc(val) - xc(0)
+                color = COLOR_START; running = val
+            elif kind == "total":
+                bx = xc(0); bw = xc(running) - xc(0)
+                color = COLOR_TOTAL
+            elif kind == "up":
+                bx = xc(running); bw = xc(running + val) - xc(running)
+                color = COLOR_UP; running += val
+            else:  # down
+                new_run = running + val  # val is negative
+                bx = xc(new_run); bw = xc(running) - xc(new_run)
+                color = COLOR_DOWN; running = new_run
+
+            rect = slide.shapes.add_shape(1, bx, by, bw, BH)
+            rect.fill.solid(); rect.fill.fore_color.rgb = _hex(color)
+            rect.line.fill.background()
+
+            # Value label inside or to right
+            lbl_x = bx + bw + int(Inches(0.08))
+            lbl_y = by
+            txb = slide.shapes.add_textbox(lbl_x, lbl_y, int(Inches(0.7)), BH)
+            p = txb.text_frame.paragraphs[0]
+            p.text = f"${abs(val)}M"
+            p.font.size = Pt(9); p.font.bold = True; p.font.name = "Arial"
+            p.font.color.rgb = _hex(color if kind != "total" else DARK_BLUE)
+
+            # Row label on left
+            ltxb = slide.shapes.add_textbox(int(CX - Inches(1.4)), by, int(Inches(1.35)), BH)
+            ltxb.text_frame.word_wrap = True
+            lp = ltxb.text_frame.paragraphs[0]
+            lp.text = lbl_txt; lp.font.size = Pt(9); lp.font.name = "Arial"
+            lp.font.color.rgb = _hex(DARK_GRAY); lp.alignment = PP_ALIGN.RIGHT
+
+        # X-axis line
+        ax_y = CY + CH
+        ax = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, int(CX), int(ax_y), int(CX+CW), int(ax_y))
+        ax.line.color.rgb = _hex(MID_GRAY); ax.line.width = Pt(0.75)
+
+        # X-axis gridlines every 100
+        for gv in range(0, 600, 100):
+            gx = xc(gv)
+            gl = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, gx, int(CY), gx, int(ax_y))
+            gl.line.color.rgb = _hex(LIGHT_GRAY); gl.line.width = Pt(0.5)
+            txb = slide.shapes.add_textbox(gx - int(Inches(0.3)), int(ax_y + Inches(0.05)),
+                                            int(Inches(0.6)), int(Inches(0.25)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = f"${gv}M"; p.font.size = Pt(8); p.font.name = "Arial"
+            p.font.color.rgb = _hex(MID_GRAY); p.alignment = PP_ALIGN.CENTER
+
+        add_source(slide, "Source: Management Accounts FY2024")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 9: Gantt / Transformation Roadmap
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide9():
+        from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+        slide = blank_slide()
+        add_title(slide, "Transformation Roadmap", "Weeks")
+
+        CX = Inches(2.8)
+        CY = Inches(1.4)
+        CW = Inches(9.8)
+        CH = Inches(5.2)
+        N  = len(GANTT_DATA)
+        ROW_H = int(CH / (N + 0.5))
+        BH    = int(ROW_H * 0.62)
+        GAP   = int(ROW_H * 0.19)
+
+        def gx(week): return int(CX + CW * week / GANTT_TOTAL_WEEKS)
+
+        # Phase dividers / header
+        for q in range(0, GANTT_TOTAL_WEEKS + 1, 4):
+            lx = gx(q)
+            gl = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, lx, int(CY), lx, int(CY+CH))
+            gl.line.color.rgb = _hex(LIGHT_GRAY); gl.line.width = Pt(0.5)
+            if q % 8 == 0:
+                txb = slide.shapes.add_textbox(lx - int(Inches(0.3)), int(CY - Inches(0.35)),
+                                                int(Inches(0.7)), int(Inches(0.3)))
+                p = txb.text_frame.paragraphs[0]
+                p.text = f"W{q}"; p.font.size = Pt(8); p.font.name = "Arial"
+                p.font.color.rgb = _hex(MID_GRAY); p.alignment = PP_ALIGN.CENTER
+
+        # Draw task bars
+        prev_ws = None
+        for i, (ws_name, task, start, dur, color) in enumerate(GANTT_DATA):
+            by = int(CY + GAP + i * ROW_H)
+            bx = gx(start)
+            bw = gx(start + dur) - gx(start)
+            rect = slide.shapes.add_shape(1, bx, by, bw, BH)
+            rect.fill.solid(); rect.fill.fore_color.rgb = _hex(color)
+            rect.line.fill.background()
+            # Task label inside bar if wide enough
+            if bw > int(Inches(0.8)):
+                txb = slide.shapes.add_textbox(bx + int(Inches(0.07)), by, bw - int(Inches(0.1)), BH)
+                txb.text_frame.word_wrap = False
+                p = txb.text_frame.paragraphs[0]
+                p.text = task; p.font.size = Pt(8); p.font.name = "Arial"
+                p.font.color.rgb = _hex(WHITE if color != "#D9D9D9" else DARK_GRAY)
+            # Workstream label on left  (only first row of each ws)
+            if ws_name != prev_ws:
+                ltxb = slide.shapes.add_textbox(int(CX - Inches(2.7)), by, int(Inches(2.6)), BH)
+                lp = ltxb.text_frame.paragraphs[0]
+                lp.text = ws_name; lp.font.size = Pt(9.5); lp.font.bold = True
+                lp.font.name = "Arial"; lp.font.color.rgb = _hex(DARK_BLUE)
+                lp.alignment = PP_ALIGN.RIGHT
+            prev_ws = ws_name
+
+        # X baseline
+        ax = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, int(CX), int(CY+CH), int(CX+CW), int(CY+CH))
+        ax.line.color.rgb = _hex(MID_GRAY); ax.line.width = Pt(0.75)
+
+        add_source(slide, "Source: Programme Management Office")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 10: Harvey Balls - Capability Benchmarking
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide10():
+        import math
+        slide = blank_slide()
+        add_title(slide, "Capability Benchmarking", "Harvey Ball Assessment")
+
+        CELL_W = int(Inches(1.9))
+        CELL_H = int(Inches(0.62))
+        COL0_W = int(Inches(2.8))
+        START_X = int(Inches(0.5))
+        START_Y = int(Inches(1.45))
+        BALL_R  = int(Inches(0.22))
+
+        # Header row
+        hdr_bg = slide.shapes.add_shape(1, START_X, START_Y, COL0_W + CELL_W * len(HARVEY_COMPANIES), CELL_H)
+        hdr_bg.fill.solid(); hdr_bg.fill.fore_color.rgb = _hex(DARK_BLUE)
+        hdr_bg.line.fill.background()
+        for c, co in enumerate(HARVEY_COMPANIES):
+            cx = START_X + COL0_W + c * CELL_W
+            txb = slide.shapes.add_textbox(cx, START_Y, CELL_W, CELL_H)
+            p = txb.text_frame.paragraphs[0]
+            p.text = co; p.font.size = Pt(10); p.font.bold = True
+            p.font.name = "Arial"; p.font.color.rgb = _hex(WHITE)
+            p.alignment = PP_ALIGN.CENTER
+
+        def draw_harvey(cx_center, cy_center, score, radius):
+            """Draw a Harvey Ball: score 0-4."""
+            # Background circle (white fill, dark border)
+            r2 = radius * 2
+            bg = slide.shapes.add_shape(9,  # oval
+                cx_center - radius, cy_center - radius, r2, r2)
+            bg.fill.solid(); bg.fill.fore_color.rgb = _hex(WHITE)
+            bg.line.color.rgb = _hex(DARK_BLUE); bg.line.width = Pt(1.5)
+            if score == 0:
+                return
+            if score == 4:
+                # Fully filled
+                dot = slide.shapes.add_shape(9,
+                    cx_center - radius, cy_center - radius, r2, r2)
+                dot.fill.solid(); dot.fill.fore_color.rgb = _hex(DARK_BLUE)
+                dot.line.fill.background()
+                return
+            # Partial fill: use a freeform pie-slice as polygon
+            # build_freeform uses EMU coordinates directly (scale=1.0)
+            frac = score / 4.0
+            n_pts = max(16, int(frac * 48))
+            angles = [(-math.pi/2) + frac * 2 * math.pi * k / n_pts for k in range(n_pts + 1)]
+            arc_pts = [(cx_center + int(radius * math.cos(a)),
+                        cy_center + int(radius * math.sin(a))) for a in angles]
+            # Polygon: center -> arc points -> back to center (closed)
+            all_pts = [(cx_center, cy_center)] + arc_pts + [(cx_center, cy_center)]
+            builder = slide.shapes.build_freeform(all_pts[0][0], all_pts[0][1])
+            builder.add_line_segments(all_pts[1:], close=True)
+            shape = builder.convert_to_shape()
+            shape.fill.solid(); shape.fill.fore_color.rgb = _hex(DARK_BLUE)
+            shape.line.fill.background()
+
+        for r, (crit, row_scores) in enumerate(zip(HARVEY_CRITERIA, HARVEY_SCORES)):
+            ry = START_Y + CELL_H + r * CELL_H
+            # Row bg
+            bg_color = WHITE if r % 2 == 0 else "#F5F8FF"
+            row_bg = slide.shapes.add_shape(1, START_X, ry, COL0_W + CELL_W * len(HARVEY_COMPANIES), CELL_H)
+            row_bg.fill.solid(); row_bg.fill.fore_color.rgb = _hex(bg_color)
+            row_bg.line.color.rgb = _hex(LIGHT_GRAY); row_bg.line.width = Pt(0.25)
+            # Criterion label
+            txb = slide.shapes.add_textbox(START_X + int(Inches(0.1)), ry, COL0_W - int(Inches(0.15)), CELL_H)
+            p = txb.text_frame.paragraphs[0]
+            p.text = crit; p.font.size = Pt(9.5); p.font.name = "Arial"
+            p.font.color.rgb = _hex(DARK_GRAY)
+            # Harvey balls
+            for c, score in enumerate(row_scores):
+                cx_center = START_X + COL0_W + c * CELL_W + CELL_W // 2
+                cy_center = ry + CELL_H // 2
+                draw_harvey(cx_center, cy_center, score, BALL_R)
+
+        # Legend
+        ly = START_Y + CELL_H + len(HARVEY_CRITERIA) * CELL_H + int(Inches(0.2))
+        for i, desc in enumerate(["No capability", "Basic", "Moderate", "Strong", "Leading"]):
+            lx = START_X + i * int(Inches(2.4))
+            draw_harvey(lx + int(Inches(0.25)), ly + int(Inches(0.22)), i, int(Inches(0.17)))
+            txb = slide.shapes.add_textbox(lx + int(Inches(0.52)), ly, int(Inches(1.8)), int(Inches(0.44)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = desc; p.font.size = Pt(8.5); p.font.name = "Arial"
+            p.font.color.rgb = _hex(DARK_GRAY)
+
+        add_source(slide, "Source: Internal capability assessment")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 11: Tornado / Sensitivity Analysis
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide11():
+        from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+        slide = blank_slide()
+        add_title(slide, "NPV Sensitivity Analysis", "Impact on base-case NPV of $217M  ($M)")
+
+        sorted_drivers = sorted(TORNADO_DRIVERS, key=lambda x: abs(x[1])+abs(x[2]), reverse=True)
+        N = len(sorted_drivers)
+
+        CX   = Inches(3.2)
+        CY   = Inches(1.45)
+        CW   = Inches(9.3)
+        CH   = Inches(5.1)
+        XMIN = -60
+        XMAX =  60
+        XRNG = XMAX - XMIN
+
+        ROW_H = int(CH / (N + 0.5))
+        BH    = int(ROW_H * 0.62)
+        GAP   = int(ROW_H * 0.19)
+
+        def xc(v): return int(CX + CW * (v - XMIN) / XRNG)
+
+        # Zero line
+        x0 = xc(0)
+        zl = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, x0, int(CY), x0, int(CY+CH))
+        zl.line.color.rgb = _hex(DARK_GRAY); zl.line.width = Pt(1)
+
+        # Gridlines
+        for gv in range(-60, 61, 20):
+            gx = xc(gv)
+            gl = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.STRAIGHT, gx, int(CY), gx, int(CY+CH))
+            gl.line.color.rgb = _hex(LIGHT_GRAY); gl.line.width = Pt(0.5)
+            txb = slide.shapes.add_textbox(gx - int(Inches(0.3)), int(CY+CH+Inches(0.05)),
+                                            int(Inches(0.6)), int(Inches(0.25)))
+            p = txb.text_frame.paragraphs[0]
+            p.text = f"${gv}M" if gv != 0 else "Base"
+            p.font.size = Pt(8); p.font.name = "Arial"
+            p.font.color.rgb = _hex(MID_GRAY); p.alignment = PP_ALIGN.CENTER
+
+        for i, (drv, low, high) in enumerate(sorted_drivers):
+            by = int(CY + GAP + i * ROW_H)
+
+            # Downside bar (negative)
+            bx_low = xc(low); bx_0 = xc(0)
+            bw_low = bx_0 - bx_low
+            r_down = slide.shapes.add_shape(1, bx_low, by, bw_low, BH)
+            r_down.fill.solid(); r_down.fill.fore_color.rgb = _hex(RED)
+            r_down.line.fill.background()
+
+            # Upside bar (positive)
+            bx_hi = xc(0); bw_hi = xc(high) - bx_hi
+            r_up = slide.shapes.add_shape(1, bx_hi, by, bw_hi, BH)
+            r_up.fill.solid(); r_up.fill.fore_color.rgb = _hex(GREEN)
+            r_up.line.fill.background()
+
+            # Driver label on left
+            ltxb = slide.shapes.add_textbox(int(CX - Inches(3.0)), by, int(Inches(2.85)), BH)
+            lp = ltxb.text_frame.paragraphs[0]
+            lp.text = drv; lp.font.size = Pt(9); lp.font.name = "Arial"
+            lp.font.color.rgb = _hex(DARK_GRAY); lp.alignment = PP_ALIGN.RIGHT
+
+            # Value labels
+            for bx_lbl, bw_lbl, val, align_right in [
+                (bx_low - int(Inches(0.55)), int(Inches(0.52)), low, True),
+                (xc(high) + int(Inches(0.05)), int(Inches(0.52)), high, False),
+            ]:
+                txb = slide.shapes.add_textbox(bx_lbl, by, int(Inches(0.52)), BH)
+                p = txb.text_frame.paragraphs[0]
+                p.text = f"${val:+d}M"; p.font.size = Pt(8); p.font.name = "Arial"
+                p.font.color.rgb = _hex(RED if val < 0 else GREEN); p.font.bold = True
+                p.alignment = PP_ALIGN.RIGHT if align_right else PP_ALIGN.LEFT
+
+        add_source(slide, "Source: Financial model - sensitivity run")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Slide 12: Sankey - Income Statement
+    # ─────────────────────────────────────────────────────────────────────────
+    def slide12():
+        slide = blank_slide()
+        add_title(slide, "Income Statement Sankey", "FY 2024  ($B)")
+        png = _make_sankey_png()
+        if png:
+            slide.shapes.add_picture(png, Inches(0.25), Inches(1.1), Inches(12.8), Inches(6.2))
+        else:
+            txb = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(10), Inches(1))
+            p = txb.text_frame.paragraphs[0]
+            p.text = "Install matplotlib to render Sankey:  pip install matplotlib"
+            p.font.size = Pt(14); p.font.name = "Arial"; p.font.color.rgb = _hex(MID_GRAY)
+        add_source(slide, "Source: Company financials FY2024")
+
+    slide1(); slide2(); slide3(); slide4(); slide5(); slide6(); slide7(); slide8(); slide9(); slide10(); slide11(); slide12()
     prs.save("McKinsey_Slides.pptx")
     print("  ✓  McKinsey_Slides.pptx   created")
 

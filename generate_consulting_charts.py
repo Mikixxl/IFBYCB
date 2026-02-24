@@ -718,59 +718,176 @@ def build_pptx():
         series.format.line.color.rgb      = _hex(hex_color)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Slide 1: GBS Waterfall
+    # Slide 1: GBS Waterfall  (hand-drawn: rectangles + dotted connectors)
     # ─────────────────────────────────────────────────────────────────────────
     def slide1():
-        from pptx.enum.chart import XL_CHART_TYPE
+        from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+        from pptx.oxml.ns import qn as _qn
+        from lxml import etree as _etree
+
         slide = blank_slide()
         add_title(slide, "Global Business Services Scope", "FTE")
 
-        cd = ChartData()
-        cd.categories = GBS_CATS
+        # ── Chart geometry ────────────────────────────────────────────────
+        CL = Inches(2.0)    # left edge (room for row labels)
+        CT = Inches(1.5)    # top edge
+        CH = Inches(4.9)    # chart height
+        Y_MAX = 220
 
-        cd.add_series("Spacer",           GBS_SPACER)
-        cd.add_series("Scope reduction",  GBS_REDUCTION)
-        cd.add_series("Accounting",       GBS_ACCOUNTING)
-        cd.add_series("Customer Service", GBS_CUST_SERVICE)
-        cd.add_series("Procurement",      GBS_PROCUREMENT)
-        cd.add_series("Sales Support",    GBS_SALES_SUPP)
+        def vy(v):
+            """Convert FTE value → Y coordinate on slide."""
+            return CT + CH * (1.0 - v / Y_MAX)
 
-        chart = slide.shapes.add_chart(
-            XL_CHART_TYPE.COLUMN_STACKED,
-            Inches(0.4), Inches(1.35),
-            Inches(12.5), Inches(5.5),
-            cd,
-        ).chart
+        # ── Column layout ─────────────────────────────────────────────────
+        BW  = Inches(1.4)   # milestone bar width
+        RW  = Inches(0.9)   # reduction bar width
+        G1  = Inches(0.30)  # gap: milestone → reduction
+        G2  = Inches(0.18)  # gap: reduction → reduction
+        G3  = Inches(0.30)  # gap: reduction → milestone
+        G4  = Inches(0.30)  # gap: milestone → milestone
 
-        # Spacer – invisible
-        chart.series[0].format.fill.background()
-        chart.series[0].format.line.fill.background()
+        bm_x   = CL
+        proc_x = bm_x   + BW + G1
+        str_x  = proc_x + RW + G2
+        sys_x  = str_x  + RW + G2
+        so_x   = sys_x  + RW + G3
+        tr_x   = so_x   + BW + G4
+        tb_x   = tr_x   + BW + G4
 
-        # Reduction – gray
-        series_color(chart.series[1], LIGHT_GRAY)
-        chart.series[1].data_labels.show_value = True
-        chart.series[1].data_labels.font.size  = Pt(9)
-        chart.series[1].data_labels.font.bold  = True
-        chart.series[1].data_labels.font.name  = "Arial"
+        SEG_DATA   = [GBS_ACCOUNTING, GBS_CUST_SERVICE,
+                      GBS_PROCUREMENT, GBS_SALES_SUPP]
+        SEG_COLORS = [BLACK, DARK_BLUE, MID_BLUE, LIGHT_BLUE]
+        SEG_LABELS = ["Accounting", "Customer Service",
+                      "Procurement", "Sales Support"]
 
-        # Milestone stacked segments
-        seg_colors = [BLACK, DARK_BLUE, MID_BLUE, LIGHT_BLUE]
-        for i, color in enumerate(seg_colors, start=2):
-            series_color(chart.series[i], color)
-            chart.series[i].data_labels.show_value = True
-            chart.series[i].data_labels.font.size  = Pt(9)
-            chart.series[i].data_labels.font.bold  = True
-            chart.series[i].data_labels.font.name  = "Arial"
-            chart.series[i].data_labels.font.color.rgb = _hex(
-                WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK
-            )
+        def add_label(bx, bw, bar_top, bar_h, text, fg):
+            if bar_h < Inches(0.22):
+                return
+            txb = slide.shapes.add_textbox(
+                bx, bar_top + bar_h * 0.08,
+                bw, bar_h * 0.84)
+            p = txb.text_frame.paragraphs[0]
+            p.text = str(text)
+            p.font.size      = Pt(11)
+            p.font.bold      = True
+            p.font.name      = "Arial"
+            p.font.color.rgb = _hex(fg)
+            p.alignment      = PP_ALIGN.CENTER
 
-        chart.has_legend = True
-        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-        chart.legend.include_in_layout = False
-        chart.has_title = False
-        chart.value_axis.has_gridlines = True
-        chart.category_axis.has_gridlines = False
+        # ── Draw milestone stacked columns ────────────────────────────────
+        for col_idx, (bx, di) in enumerate([
+            (bm_x, 0), (so_x, 4), (tr_x, 5), (tb_x, 6)
+        ]):
+            cum = 0
+            for seg_vals, color in zip(SEG_DATA, SEG_COLORS):
+                v = seg_vals[di]
+                if v <= 0:
+                    cum += v
+                    continue
+                bar_top = vy(cum + v)
+                bar_h   = vy(cum) - bar_top
+                rect = slide.shapes.add_shape(1, bx, bar_top, BW, bar_h)
+                rect.fill.solid()
+                rect.fill.fore_color.rgb = _hex(color)
+                rect.line.fill.background()
+                fg = WHITE if color in (BLACK, DARK_BLUE, MID_BLUE) else BLACK
+                add_label(bx, BW, bar_top, bar_h, v, fg)
+                cum += v
+
+            # Total annotation above column
+            total = GBS_TOTALS[di]
+            ttxb = slide.shapes.add_textbox(
+                bx, vy(total) - Inches(0.32), BW, Inches(0.30))
+            tp = ttxb.text_frame.paragraphs[0]
+            tp.text = str(total)
+            tp.font.size      = Pt(12)
+            tp.font.bold      = True
+            tp.font.name      = "Arial"
+            tp.font.color.rgb = _hex(DARK_GRAY)
+            tp.alignment      = PP_ALIGN.CENTER
+
+        # ── Draw floating reduction bars ──────────────────────────────────
+        for bx, di in [(proc_x, 1), (str_x, 2), (sys_x, 3)]:
+            sp  = GBS_SPACER[di]
+            red = GBS_REDUCTION[di]
+            bar_top = vy(sp + red)
+            bar_h   = vy(sp) - bar_top
+            rect = slide.shapes.add_shape(1, bx, bar_top, RW, bar_h)
+            rect.fill.solid()
+            rect.fill.fore_color.rgb = _hex(LIGHT_GRAY)
+            rect.line.fill.background()
+            add_label(bx, RW, bar_top, bar_h, red, MID_GRAY)
+
+        # ── X-axis line ───────────────────────────────────────────────────
+        ax_end = tb_x + BW + Inches(0.15)
+        ax = slide.shapes.add_connector(
+            MSO_CONNECTOR_TYPE.STRAIGHT, CL - Inches(0.1), CT + CH,
+            ax_end, CT + CH)
+        ax.line.color.rgb = _hex(MID_GRAY)
+        ax.line.width     = Pt(1)
+
+        # ── X-axis category labels ────────────────────────────────────────
+        cat_defs = [
+            (bm_x,   BW, "Benchmark\nscope",          False),
+            (proc_x, RW, "Process\nstandardization",  False),
+            (str_x,  RW, "Strategic\nimportance",      False),
+            (sys_x,  RW, "System\nlimitations",        False),
+            (so_x,   BW, "Signed-off\nscope",          False),
+            (tr_x,   BW, "Transferred\nto date",       False),
+            (tb_x,   BW, "To be\ntransferred",         True),
+        ]
+        for bx, bw, lbl, bold in cat_defs:
+            xlbl = slide.shapes.add_textbox(
+                bx - Inches(0.08), CT + CH + Inches(0.1),
+                bw + Inches(0.16), Inches(0.55))
+            xlbl.text_frame.word_wrap = True
+            xp = xlbl.text_frame.paragraphs[0]
+            xp.text           = lbl
+            xp.font.size      = Pt(9)
+            xp.font.name      = "Arial"
+            xp.font.bold      = bold
+            xp.font.color.rgb = _hex(BLACK)
+            xp.alignment      = PP_ALIGN.CENTER
+
+        # ── Row labels (left, aligned to Benchmark segments) ─────────────
+        cum = 0
+        for seg_vals, lbl, color in zip(SEG_DATA, SEG_LABELS, SEG_COLORS):
+            v = seg_vals[0]
+            if v > 0:
+                y_mid = vy(cum + v / 2)
+                lt = slide.shapes.add_textbox(
+                    CL - Inches(1.5), y_mid - Inches(0.22),
+                    Inches(1.45), Inches(0.44))
+                lt.text_frame.word_wrap = True
+                lp = lt.text_frame.paragraphs[0]
+                lp.text           = lbl
+                lp.font.size      = Pt(9)
+                lp.font.name      = "Arial"
+                lp.font.color.rgb = _hex(DARK_GRAY)
+                lp.alignment      = PP_ALIGN.RIGHT
+            cum += v
+
+        # ── Dotted connector lines ────────────────────────────────────────
+        def dotted_line(x1, y1, x2, y2):
+            conn = slide.shapes.add_connector(
+                MSO_CONNECTOR_TYPE.STRAIGHT, x1, y1, x2, y2)
+            conn.line.color.rgb = _hex(MID_GRAY)
+            conn.line.width     = Pt(0.75)
+            try:
+                ln_el = conn.line._ln
+                for old in ln_el.findall(_qn('a:prstDash')):
+                    ln_el.remove(old)
+                pd = _etree.SubElement(ln_el, _qn('a:prstDash'))
+                pd.set('val', 'dot')
+            except Exception:
+                pass
+
+        dotted_line(bm_x   + BW, vy(193), proc_x,      vy(193))  # 193 → Process top
+        dotted_line(proc_x + RW, vy(172), str_x,        vy(172))  # 172 → Strategic top
+        dotted_line(str_x  + RW, vy(151), sys_x,        vy(151))  # 151 → System top
+        dotted_line(sys_x  + RW, vy(129), so_x,         vy(129))  # 129 → Signed-off top
+        dotted_line(so_x   + BW, vy(95),  tr_x,         vy(95))   #  95 → Transferred top
+        dotted_line(tr_x   + BW, vy(34),  tb_x,         vy(34))   #  34 → To be transferred top
 
         add_source(slide, "Source: Internal HR data")
 

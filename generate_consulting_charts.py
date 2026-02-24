@@ -735,8 +735,8 @@ def build_pptx():
         Y_MAX = 220
 
         def vy(v):
-            """Convert FTE value → Y coordinate on slide."""
-            return CT + CH * (1.0 - v / Y_MAX)
+            """Convert FTE value → Y coordinate on slide (integer EMUs)."""
+            return int(CT + CH * (1.0 - v / Y_MAX))
 
         # ── Column layout ─────────────────────────────────────────────────
         BW  = Inches(1.4)   # milestone bar width
@@ -764,8 +764,8 @@ def build_pptx():
             if bar_h < Inches(0.22):
                 return
             txb = slide.shapes.add_textbox(
-                bx, bar_top + bar_h * 0.08,
-                bw, bar_h * 0.84)
+                bx, int(bar_top + bar_h * 0.08),
+                bw, int(bar_h * 0.84))
             p = txb.text_frame.paragraphs[0]
             p.text = str(text)
             p.font.size      = Pt(11)
@@ -854,7 +854,7 @@ def build_pptx():
         for seg_vals, lbl, color in zip(SEG_DATA, SEG_LABELS, SEG_COLORS):
             v = seg_vals[0]
             if v > 0:
-                y_mid = vy(cum + v / 2)
+                y_mid = vy(cum + v // 2)
                 lt = slide.shapes.add_textbox(
                     CL - Inches(1.5), y_mid - Inches(0.22),
                     Inches(1.45), Inches(0.44))

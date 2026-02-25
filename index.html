@@ -3,43 +3,181 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
+  <title>Photo Format Converter</title>
   <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="2" y="6" width="28" height="20" rx="3" fill="url(#g1)"/>
+          <circle cx="11" cy="13" r="3" fill="rgba(255,255,255,0.9)"/>
+          <path d="M2 22l8-6 5 4 5-6 10 8" stroke="rgba(255,255,255,0.8)" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
+          <defs>
+            <linearGradient id="g1" x1="2" y1="6" x2="30" y2="26" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6366f1"/>
+              <stop offset="1" stop-color="#8b5cf6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>PhotoConvert</span>
+      </div>
+      <p class="tagline">Convert &amp; resize any image format — PNG, JPEG, WebP, AVIF, BMP, SVG and more</p>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ── Upload zone ─────────────────────────────── -->
+    <section class="card upload-card" id="uploadCard">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-inner">
+          <div class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M32 8C19.85 8 10 17.85 10 30c0 1.3.12 2.57.34 3.8C6.69 35.3 4 38.88 4 43c0 5.52 4.48 10 10 10h36c5.52 0 10-4.48 10-10 0-4.12-2.49-7.68-6.07-9.19.02-.27.07-.54.07-.81C54 17.85 44.15 8 32 8z" fill="url(#ug1)" opacity="0.15"/>
+              <path d="M32 42V22M22 32l10-10 10 10" stroke="url(#ug2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <defs>
+                <linearGradient id="ug1" x1="4" y1="8" x2="60" y2="53" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1"/><stop offset="1" stop-color="#8b5cf6"/>
+                </linearGradient>
+                <linearGradient id="ug2" x1="22" y1="22" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <p class="drop-title drop-zone-text">Drag &amp; drop your image here</p>
+          <p class="drop-sub">or</p>
+          <button class="btn btn-primary" id="browseBtn" type="button">Browse Files</button>
+          <input type="file" id="fileInput" accept="image/*,.svg,.bmp,.ico,.tif,.tiff,.avif" hidden aria-label="Select image file"/>
+          <p class="drop-formats">JPG &bull; PNG &bull; WebP &bull; GIF &bull; BMP &bull; SVG &bull; AVIF &bull; ICO &bull; TIFF</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Controls ────────────────────────────────── -->
+    <section class="card controls-card" id="controlsSection" hidden>
+
+      <!-- Output format -->
+      <div class="control-block">
+        <label class="control-label">Output Format</label>
+        <div class="format-grid" role="group" aria-label="Output format selection">
+          <button class="format-btn active" data-format="png"  type="button">PNG</button>
+          <button class="format-btn"        data-format="jpeg" type="button">JPEG</button>
+          <button class="format-btn"        data-format="webp" type="button">WebP</button>
+          <button class="format-btn"        data-format="avif" type="button">AVIF</button>
+          <button class="format-btn"        data-format="bmp"  type="button">BMP</button>
+          <button class="format-btn"        data-format="svg"  type="button">SVG</button>
+        </div>
+        <p class="format-hint" id="formatHint"></p>
       </div>
 
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
+      <!-- Dimensions -->
+      <div class="control-block">
+        <label class="control-label">Dimensions</label>
+        <div class="dim-row">
+          <div class="dim-field">
+            <label for="widthInput" class="sr-only">Width in pixels</label>
+            <input type="number" id="widthInput" class="dim-input" min="1" max="16000" placeholder="Width" aria-label="Width in pixels"/>
+            <span class="dim-unit">px</span>
+          </div>
+          <button class="lock-btn" id="lockBtn" type="button" title="Aspect ratio locked" aria-pressed="true">
+            <svg class="icon-lock" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 2a4 4 0 00-4 4v2H5a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V9a1 1 0 00-1-1h-1V6a4 4 0 00-4-4zm0 2a2 2 0 012 2v2H8V6a2 2 0 012-2z"/>
+            </svg>
+            <svg class="icon-unlock" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-1 1v8a1 1 0 001 1h10a1 1 0 001-1V8a1 1 0 00-1-1h-5V6a2 2 0 014-.2V4.1A4 4 0 0010 2z"/>
+            </svg>
+          </button>
+          <div class="dim-field">
+            <label for="heightInput" class="sr-only">Height in pixels</label>
+            <input type="number" id="heightInput" class="dim-input" min="1" max="16000" placeholder="Height" aria-label="Height in pixels"/>
+            <span class="dim-unit">px</span>
+          </div>
+        </div>
+        <div class="scale-row" id="scaleGroup" role="group" aria-label="Scale presets">
+          <button class="scale-btn" data-scale="0.25" type="button">25%</button>
+          <button class="scale-btn" data-scale="0.5"  type="button">50%</button>
+          <button class="scale-btn" data-scale="0.75" type="button">75%</button>
+          <button class="scale-btn" data-scale="1"    type="button">100%</button>
+          <button class="scale-btn" data-scale="1.5"  type="button">150%</button>
+          <button class="scale-btn" data-scale="2"    type="button">200%</button>
+        </div>
       </div>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
+      <!-- Quality -->
+      <div class="control-block" id="qualityRow">
+        <label class="control-label" for="qualitySlider">
+          Quality&ensp;<span class="quality-badge"><span id="qualityDisplay">92</span>%</span>
+        </label>
+        <div class="slider-track">
+          <input type="range" id="qualitySlider" min="1" max="100" value="92" class="slider" aria-label="Output quality"/>
+          <div class="slider-labels">
+            <span>Smaller file</span>
+            <span>Better quality</span>
+          </div>
+        </div>
       </div>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
+      <!-- Action button -->
+      <button class="btn btn-convert" id="convertBtn" type="button">
+        <svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+        </svg>
+        Convert
+      </button>
+    </section>
 
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
-  </div>
+    <!-- ── Preview ──────────────────────────────────── -->
+    <section class="preview-section" id="previewSection" hidden>
+      <div class="preview-grid">
+
+        <!-- Original -->
+        <div class="preview-card">
+          <div class="preview-card-header">
+            <span class="preview-label">Original</span>
+          </div>
+          <div class="preview-img-wrap">
+            <img id="originalPreview" alt="Original image preview" class="preview-img"/>
+          </div>
+          <div class="image-meta" id="originalInfo"></div>
+        </div>
+
+        <!-- Converted -->
+        <div class="preview-card">
+          <div class="preview-card-header">
+            <span class="preview-label">Converted</span>
+            <button class="btn btn-download" id="downloadBtn" type="button" disabled>
+              <svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+              </svg>
+              Download
+            </button>
+          </div>
+          <div class="preview-img-wrap">
+            <div class="converted-placeholder" id="convertedPlaceholder">
+              <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M24 4L4 14v20l20 10 20-10V14L24 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" opacity="0.3"/>
+                <path d="M24 4v40M4 14l20 10 20-10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" opacity="0.3"/>
+              </svg>
+              <span>Click Convert to preview</span>
+            </div>
+            <img id="convertedPreview" alt="Converted image preview" class="preview-img" style="display:none"/>
+          </div>
+          <div class="image-meta" id="convertedInfo"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>All processing happens locally in your browser &mdash; no files are uploaded to any server.</p>
+  </footer>
+
   <script src="app.js"></script>
 </body>
 </html>

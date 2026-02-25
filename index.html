@@ -47,7 +47,7 @@
     </div>
 
     <div class="field-group">
-      <label for="langSelect">Recording Language</label>
+      <label for="langSelect">Primary Recording Language</label>
       <select id="langSelect">
         <option value="en-US">English (US)</option>
         <option value="en-GB">English (UK)</option>
@@ -63,9 +63,67 @@
         <option value="ja-JP">Japanese</option>
         <option value="zh-CN">Chinese (Simplified)</option>
       </select>
+      <p class="field-hint">Used for live speech recognition. For multilingual meetings, also select expected languages below.</p>
+    </div>
+
+    <div class="field-group">
+      <label for="expectedLangsSelect">Expected Meeting Languages <span class="optional">(optional)</span></label>
+      <select id="expectedLangsSelect" multiple size="4">
+        <option value="English">English</option>
+        <option value="German">German</option>
+        <option value="Spanish">Spanish</option>
+        <option value="French">French</option>
+        <option value="Italian">Italian</option>
+        <option value="Portuguese">Portuguese</option>
+        <option value="Dutch">Dutch</option>
+        <option value="Swedish">Swedish</option>
+        <option value="Norwegian">Norwegian</option>
+        <option value="Danish">Danish</option>
+        <option value="Japanese">Japanese</option>
+        <option value="Chinese">Chinese</option>
+        <option value="Arabic">Arabic</option>
+        <option value="Russian">Russian</option>
+      </select>
+      <p class="field-hint">Helps AI understand multilingual meetings. Tap / Ctrl+click to select multiple languages.</p>
     </div>
 
     <button class="btn-primary" id="saveSettings">Save Settings</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     OUTPUT LANGUAGE MODAL
+═══════════════════════════════════════════════ -->
+<div class="overlay hidden" id="outputLangOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Output Language">
+    <div class="modal-header">
+      <h2>Output Language</h2>
+    </div>
+    <p class="field-hint" style="margin-top: -8px;">Choose the language for the meeting analysis output.</p>
+
+    <div class="field-group">
+      <label for="outputLangSelect">Language</label>
+      <select id="outputLangSelect">
+        <option value="auto">Auto-detect (same as meeting)</option>
+        <option value="English">English</option>
+        <option value="German">German / Deutsch</option>
+        <option value="Spanish">Spanish / Español</option>
+        <option value="French">French / Français</option>
+        <option value="Italian">Italian / Italiano</option>
+        <option value="Portuguese">Portuguese / Português</option>
+        <option value="Dutch">Dutch / Nederlands</option>
+        <option value="Swedish">Swedish / Svenska</option>
+        <option value="Norwegian">Norwegian / Norsk</option>
+        <option value="Danish">Danish / Dansk</option>
+        <option value="Japanese">Japanese / 日本語</option>
+        <option value="Chinese">Chinese / 中文</option>
+        <option value="Arabic">Arabic / العربية</option>
+        <option value="Russian">Russian / Русский</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" id="confirmOutputLang">Generate Analysis</button>
+    <button class="btn-ghost small" id="cancelOutputLang">Cancel</button>
   </div>
 </div>
 
@@ -214,6 +272,13 @@
     <button class="tab" data-result-tab="actions">Actions</button>
     <button class="tab" data-result-tab="transcript">Transcript</button>
   </nav>
+
+  <div class="copy-all-bar">
+    <button class="btn-outline copy-btn" id="copyAllBtn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy All
+    </button>
+  </div>
 
   <!-- Summary -->
   <div class="result-panel" id="rPanelSummary">

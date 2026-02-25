@@ -23,6 +23,7 @@ const S = {
     openaiKey: '',
     model: 'claude-sonnet-4-6',
     lang: 'en-US',
+    meetingLanguages: [],
   },
   history: [],
 };
@@ -36,10 +37,16 @@ const dom = {
   settingsOverlay: $('settingsOverlay'),
   closeSettings:   $('closeSettings'),
   saveSettings:    $('saveSettings'),
-  anthropicKey:    $('anthropicKey'),
-  openaiKey:       $('openaiKey'),
-  modelSelect:     $('modelSelect'),
-  langSelect:      $('langSelect'),
+  anthropicKey:        $('anthropicKey'),
+  openaiKey:           $('openaiKey'),
+  modelSelect:         $('modelSelect'),
+  langSelect:          $('langSelect'),
+  expectedLangsSelect: $('expectedLangsSelect'),
+  // Output language modal
+  outputLangOverlay:   $('outputLangOverlay'),
+  outputLangSelect:    $('outputLangSelect'),
+  confirmOutputLang:   $('confirmOutputLang'),
+  cancelOutputLang:    $('cancelOutputLang'),
 
   // Tabs
   tabBtns:    document.querySelectorAll('.tab[data-tab]'),
@@ -93,6 +100,7 @@ const dom = {
   rNoActions:      $('rNoActions'),
   rTranscript:     $('rTranscript'),
   copyTranscriptBtn: $('copyTranscriptBtn'),
+  copyAllBtn:      $('copyAllBtn'),
 
   toast: $('toast'),
 };
@@ -123,6 +131,9 @@ function populateSettingsUI() {
   dom.openaiKey.value    = S.settings.openaiKey;
   dom.modelSelect.value  = S.settings.model;
   dom.langSelect.value   = S.settings.lang;
+  Array.from(dom.expectedLangsSelect.options).forEach(opt => {
+    opt.selected = (S.settings.meetingLanguages || []).includes(opt.value);
+  });
 }
 
 // ── Toast ──────────────────────────────────────
@@ -304,7 +315,9 @@ async function transcribeWithWhisper(blob, filename) {
   const formData = new FormData();
   formData.append('file', blob, filename || 'recording.m4a');
   formData.append('model', 'whisper-1');
-  if (S.settings.lang && S.settings.lang !== 'auto') {
+  // Only constrain language when meeting is monolingual; multilingual = let Whisper auto-detect
+  const isMultilingual = S.settings.meetingLanguages && S.settings.meetingLanguages.length > 1;
+  if (!isMultilingual && S.settings.lang && S.settings.lang !== 'auto') {
     // Whisper uses ISO 639-1; extract from locale (e.g. "en-US" → "en")
     formData.append('language', S.settings.lang.split('-')[0]);
   }
@@ -325,7 +338,7 @@ async function transcribeWithWhisper(blob, filename) {
 }
 
 // ── Claude analysis ────────────────────────────
-async function analyzeWithClaude(transcript) {
+async function analyzeWithClaude(transcript, outputLang) {
   if (!S.settings.anthropicKey) {
     throw new Error('Anthropic API key required. Add it in Settings.');
   }
@@ -335,8 +348,10 @@ async function analyzeWithClaude(transcript) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       transcript,
-      model:  S.settings.model,
-      apiKey: S.settings.anthropicKey,
+      model:            S.settings.model,
+      apiKey:           S.settings.anthropicKey,
+      outputLanguage:   outputLang || 'auto',
+      meetingLanguages: S.settings.meetingLanguages || [],
     }),
   });
 
@@ -361,11 +376,39 @@ async function analyzeWithClaude(transcript) {
   }
 }
 
+// ── Output language selection ──────────────────
+function askOutputLanguage() {
+  return new Promise((resolve) => {
+    dom.outputLangSelect.value = 'auto';
+    dom.outputLangOverlay.classList.remove('hidden');
+
+    function onConfirm() {
+      dom.outputLangOverlay.classList.add('hidden');
+      cleanup();
+      resolve(dom.outputLangSelect.value);
+    }
+    function onCancel() {
+      dom.outputLangOverlay.classList.add('hidden');
+      cleanup();
+      resolve(null);
+    }
+    function cleanup() {
+      dom.confirmOutputLang.removeEventListener('click', onConfirm);
+      dom.cancelOutputLang.removeEventListener('click', onCancel);
+    }
+    dom.confirmOutputLang.addEventListener('click', onConfirm);
+    dom.cancelOutputLang.addEventListener('click', onCancel);
+  });
+}
+
 // ── Full pipeline ──────────────────────────────
 async function runPipeline(transcript, label) {
+  const outputLang = await askOutputLanguage();
+  if (outputLang === null) return; // user cancelled
+
   setProcessing(true, label || 'Analyzing with Claude…', 'This usually takes 5–15 seconds');
   try {
-    const analysis = await analyzeWithClaude(transcript);
+    const analysis = await analyzeWithClaude(transcript, outputLang);
     S.analysis = analysis;
 
     // Save to history
@@ -523,13 +566,17 @@ function clearFile() {
 // ── Share / copy ───────────────────────────────
 function buildShareText() {
   if (!S.analysis) return '';
-  const { title, summary, actionItems, keyDecisions } = S.analysis;
+  const { title, summary, actionItems, keyDecisions, followUpItems, participants } = S.analysis;
   const lines = [
     `# ${title || 'Meeting Notes'}`,
     '',
     '## Summary',
     summary || '',
   ];
+  if (participants?.length) {
+    lines.push('', '## Participants');
+    lines.push(participants.join(', '));
+  }
   if (keyDecisions?.length) {
     lines.push('', '## Key Decisions');
     keyDecisions.forEach(d => lines.push(`- ${d}`));
@@ -537,6 +584,10 @@ function buildShareText() {
   if (actionItems?.length) {
     lines.push('', '## Action Items');
     actionItems.forEach(a => lines.push(`- [ ] ${a.task} (${a.owner}, ${a.deadline})`));
+  }
+  if (followUpItems?.length) {
+    lines.push('', '## Follow-up Items');
+    followUpItems.forEach(f => lines.push(`- ${f}`));
   }
   return lines.join('\n');
 }
@@ -550,10 +601,11 @@ dom.settingsOverlay.addEventListener('click', e => {
   if (e.target === dom.settingsOverlay) closeSettingsModal();
 });
 dom.saveSettings.addEventListener('click', () => {
-  S.settings.anthropicKey = dom.anthropicKey.value.trim();
-  S.settings.openaiKey    = dom.openaiKey.value.trim();
-  S.settings.model        = dom.modelSelect.value;
-  S.settings.lang         = dom.langSelect.value;
+  S.settings.anthropicKey     = dom.anthropicKey.value.trim();
+  S.settings.openaiKey        = dom.openaiKey.value.trim();
+  S.settings.model            = dom.modelSelect.value;
+  S.settings.lang             = dom.langSelect.value;
+  S.settings.meetingLanguages = Array.from(dom.expectedLangsSelect.selectedOptions).map(o => o.value);
   saveSettingsToStorage();
   closeSettingsModal();
   showToast('Settings saved', 'success');
@@ -648,6 +700,17 @@ dom.copyTranscriptBtn.addEventListener('click', async () => {
     showToast('Transcript copied', 'success');
   } catch {
     showToast('Copy failed — select text manually', 'error');
+  }
+});
+
+dom.copyAllBtn.addEventListener('click', async () => {
+  const text = buildShareText();
+  if (!text) { showToast('Nothing to copy', ''); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('All output copied', 'success');
+  } catch {
+    showToast('Copy failed — use the Share button instead', 'error');
   }
 });
 

@@ -23,7 +23,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { transcript, model, apiKey } = body;
+  const { transcript, model, apiKey, outputLanguage, meetingLanguages } = body;
 
   if (!transcript || !transcript.trim()) {
     return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'transcript is required' }) };
@@ -32,7 +32,20 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'apiKey is required' }) };
   }
 
-  const systemPrompt = `You are a professional meeting assistant. Analyze meeting transcripts and return structured JSON only — no markdown, no explanation, just raw JSON.`;
+  const hasOutputLang = outputLanguage && outputLanguage !== 'auto';
+  const outputLangInstruction = hasOutputLang
+    ? ` Write ALL text fields in your JSON response in ${outputLanguage}.`
+    : '';
+
+  const systemPrompt = `You are a professional meeting assistant. Analyze meeting transcripts and return structured JSON only — no markdown, no explanation, just raw JSON. You can handle transcripts in any language or combination of languages — automatically detect all languages present in the transcript.${outputLangInstruction}`;
+
+  const langHint = meetingLanguages && meetingLanguages.length > 0
+    ? `\nNote: This meeting may include speakers in the following languages: ${meetingLanguages.join(', ')}.`
+    : '';
+
+  const outputLangNote = hasOutputLang
+    ? `\nIMPORTANT: Write your entire JSON response (title, summary, all action items, decisions, follow-ups) in ${outputLanguage}.\n`
+    : '';
 
   const userPrompt = `Analyze this meeting transcript and return a JSON object with the following structure exactly:
 
@@ -51,7 +64,7 @@ exports.handler = async (event) => {
   "keyDecisions": ["decision 1", "decision 2"],
   "followUpItems": ["open question or follow-up 1", "open question or follow-up 2"]
 }
-
+${langHint}${outputLangNote}
 Transcript:
 ${transcript.trim()}`;
 

@@ -224,10 +224,22 @@ async function startRecording() {
       updateTranscriptUI();
     };
 
+    let srErrored = false;
     S.recognition.onerror = e => {
-      // 'no-speech' is normal; anything else log
-      if (e.error !== 'no-speech') console.warn('SR error:', e.error);
+      if (e.error === 'no-speech') return; // normal, ignore
+      console.warn('SR error:', e.error);
+      srErrored = true;
+      const msgs = {
+        'network':              'Speech recognition requires a network connection',
+        'audio-capture':        'No microphone found or audio capture failed',
+        'not-allowed':          'Microphone permission denied for speech recognition',
+        'service-not-allowed':  'Speech recognition service not allowed in this browser',
+        'bad-grammar':          'Speech recognition grammar error',
+        'language-not-supported': 'Selected language not supported by speech recognition',
+      };
+      showToast(msgs[e.error] || `Speech recognition error: ${e.error}`, 'error');
     };
+    S._srErrored = () => srErrored;
 
     // On iOS, onend fires often — restart automatically while recording
     S.recognition.onend = () => {
@@ -268,7 +280,8 @@ function stopRecording() {
 
   if (S.transcript.trim().length > 10) {
     dom.analyzeBtn.classList.remove('hidden');
-  } else {
+  } else if (!S._srErrored?.()) {
+    // Only show mic hint when there was no recognition error already shown
     showToast('No transcript captured — try speaking closer to the mic', '');
   }
 }

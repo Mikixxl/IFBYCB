@@ -96,10 +96,8 @@ header {
 }
 
 .ifb-logo {
-  height: 48px;
+  height: 52px;
   width: auto;
-  object-fit: contain;
-  filter: brightness(1.05);
   display: block;
 }
 

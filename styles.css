@@ -96,9 +96,10 @@ header {
 }
 
 .ifb-logo {
-  height: 58px;
+  height: 64px;
   width: auto;
   display: block;
+  object-fit: contain;
 }
 
 /* Tabs */

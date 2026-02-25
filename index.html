@@ -1,45 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
-  <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MeetRec">
+  <meta name="theme-color" content="#0f172a">
+  <title>Meeting Recorder</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.svg">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
-      </div>
+<!-- ═══════════════════════════════════════════════
+     SETTINGS MODAL
+═══════════════════════════════════════════════ -->
+<div class="overlay hidden" id="settingsOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="closeSettings" aria-label="Close settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
 
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
-      </div>
+    <div class="field-group">
+      <label for="anthropicKey">Anthropic API Key <span class="required">*</span></label>
+      <input type="password" id="anthropicKey" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false">
+      <p class="field-hint">Required. Get yours at console.anthropic.com</p>
+    </div>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
-      </div>
+    <div class="field-group">
+      <label for="openaiKey">OpenAI API Key <span class="optional">(optional)</span></label>
+      <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" spellcheck="false">
+      <p class="field-hint">Only needed when uploading existing audio files (Whisper transcription).</p>
+    </div>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
+    <div class="field-group">
+      <label for="modelSelect">Claude Model</label>
+      <select id="modelSelect">
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — faster &amp; cheaper</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6 — more thorough</option>
+      </select>
+    </div>
 
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
+    <div class="field-group">
+      <label for="langSelect">Recording Language</label>
+      <select id="langSelect">
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="nl-NL">Dutch</option>
+        <option value="de-DE">German</option>
+        <option value="fr-FR">French</option>
+        <option value="es-ES">Spanish</option>
+        <option value="it-IT">Italian</option>
+        <option value="pt-BR">Portuguese (BR)</option>
+        <option value="sv-SE">Swedish</option>
+        <option value="no-NO">Norwegian</option>
+        <option value="da-DK">Danish</option>
+        <option value="ja-JP">Japanese</option>
+        <option value="zh-CN">Chinese (Simplified)</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" id="saveSettings">Save Settings</button>
   </div>
-  <script src="app.js"></script>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════ -->
+<header class="app-header">
+  <div class="header-brand">
+    <svg class="brand-icon" width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <rect x="10" y="2" width="8" height="15" rx="4" fill="#a5b4fc"/>
+      <path d="M5 13 Q5 21 14 21 Q23 21 23 13" stroke="#a5b4fc" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+      <line x1="14" y1="21" x2="14" y2="25" stroke="#a5b4fc" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="10" y1="25" x2="18" y2="25" stroke="#a5b4fc" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <span class="brand-name">MeetRec</span>
+  </div>
+  <button class="icon-btn" id="settingsBtn" aria-label="Open settings">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+</header>
+
+<!-- ═══════════════════════════════════════════════
+     MAIN APP
+═══════════════════════════════════════════════ -->
+<main class="app-main" id="appMain">
+
+  <!-- Tab Nav -->
+  <nav class="tab-nav" id="tabNav">
+    <button class="tab active" data-tab="record">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+      Record
+    </button>
+    <button class="tab" data-tab="upload">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload
+    </button>
+    <button class="tab" data-tab="history">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      History
+    </button>
+  </nav>
+
+  <!-- ─── RECORD TAB ─── -->
+  <section class="tab-panel" id="panelRecord">
+    <div class="record-info-row">
+      <span class="timer-display" id="timerDisplay">00:00</span>
+      <span class="status-chip" id="statusChip">Ready</span>
+    </div>
+
+    <div class="record-center">
+      <button class="record-btn" id="recordBtn" aria-label="Start recording">
+        <div class="record-btn-inner">
+          <div class="record-icon-shape" id="recordShape"></div>
+        </div>
+      </button>
+      <p class="record-hint" id="recordHint">Tap to start recording</p>
+    </div>
+
+    <div class="transcript-box" id="transcriptBox">
+      <div class="transcript-scroll" id="transcriptScroll">
+        <p class="transcript-empty" id="transcriptEmpty">Live transcript will appear here once you start recording.</p>
+        <div class="transcript-text" id="transcriptText"></div>
+        <span class="transcript-interim" id="transcriptInterim"></span>
+      </div>
+    </div>
+
+    <button class="btn-primary analyze-btn hidden" id="analyzeBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      Analyze with Claude
+    </button>
+  </section>
+
+  <!-- ─── UPLOAD TAB ─── -->
+  <section class="tab-panel hidden" id="panelUpload">
+    <div class="upload-drop" id="uploadDrop">
+      <input type="file" id="audioFileInput" accept="audio/*" hidden>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+      <p class="upload-title">Upload Audio File</p>
+      <p class="upload-sub">Tap to browse or drop a file here</p>
+      <p class="upload-hint">MP3, M4A, MP4, WAV, WEBM · max 25 MB<br>Requires OpenAI API key (set in Settings)</p>
+      <button class="btn-outline" id="browseBtn">Choose File</button>
+    </div>
+
+    <div class="file-card hidden" id="fileCard">
+      <div class="file-card-info">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <div>
+          <p class="file-card-name" id="fileCardName"></p>
+          <p class="file-card-size" id="fileCardSize"></p>
+        </div>
+      </div>
+      <button class="btn-primary" id="transcribeBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        Transcribe &amp; Analyze
+      </button>
+      <button class="btn-ghost small" id="clearFileBtn">Remove file</button>
+    </div>
+  </section>
+
+  <!-- ─── HISTORY TAB ─── -->
+  <section class="tab-panel hidden" id="panelHistory">
+    <div class="history-empty hidden" id="historyEmpty">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <p>No meetings yet</p>
+      <p class="upload-hint">Your analyzed meetings will appear here.</p>
+    </div>
+    <ul class="history-list" id="historyList"></ul>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════
+     PROCESSING OVERLAY
+═══════════════════════════════════════════════ -->
+<div class="processing-overlay hidden" id="processingOverlay">
+  <div class="processing-card">
+    <div class="spinner"></div>
+    <p class="processing-label" id="processingLabel">Analyzing with Claude…</p>
+    <p class="processing-sub" id="processingSub">This usually takes 5–15 seconds</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     RESULTS SCREEN
+═══════════════════════════════════════════════ -->
+<div class="results-screen hidden" id="resultsScreen">
+  <header class="results-header">
+    <button class="back-btn" id="backBtn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <h2 class="results-title" id="resultsTitle">Analysis</h2>
+    <button class="icon-btn" id="shareBtn" aria-label="Share results">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    </button>
+  </header>
+
+  <nav class="tab-nav result-tabs">
+    <button class="tab active" data-result-tab="summary">Summary</button>
+    <button class="tab" data-result-tab="actions">Actions</button>
+    <button class="tab" data-result-tab="transcript">Transcript</button>
+  </nav>
+
+  <!-- Summary -->
+  <div class="result-panel" id="rPanelSummary">
+    <div class="result-card">
+      <h3 class="card-label">Summary</h3>
+      <p id="rSummary"></p>
+    </div>
+    <div class="result-card" id="rDecisionsCard">
+      <h3 class="card-label">Key Decisions</h3>
+      <ul id="rDecisions" class="bullet-list"></ul>
+    </div>
+    <div class="result-card" id="rFollowupCard">
+      <h3 class="card-label">Follow-up Items</h3>
+      <ul id="rFollowup" class="bullet-list"></ul>
+    </div>
+    <div class="result-card" id="rParticipantsCard">
+      <h3 class="card-label">Participants</h3>
+      <p id="rParticipants"></p>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="result-panel hidden" id="rPanelActions">
+    <div id="rActionsList"></div>
+    <p class="no-items hidden" id="rNoActions">No action items identified.</p>
+  </div>
+
+  <!-- Transcript -->
+  <div class="result-panel hidden" id="rPanelTranscript">
+    <div class="result-card">
+      <h3 class="card-label">Full Transcript</h3>
+      <p id="rTranscript" class="transcript-body"></p>
+    </div>
+    <button class="btn-outline copy-btn" id="copyTranscriptBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy Transcript
+    </button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="app.js"></script>
 </body>
 </html>

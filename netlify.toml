@@ -1,14 +1,20 @@
 [build]
-  publish = "."
+  publish   = "."
   functions = "netlify/functions"
 
 [[headers]]
   for = "/*"
   [headers.values]
-  Cache-Control = "public, max-age=0, must-revalidate"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
-# Uncomment this block only if you use client-side routing and want SPA fallback
+# Route /api/analyze → Netlify function (must come before catch-all)
 [[redirects]]
-  from = "/*"  
-  to = "/index.html"
-  status = 200[build]
+  from   = "/api/analyze"
+  to     = "/.netlify/functions/analyze"
+  status = 200
+
+# SPA fallback — all unknown paths serve index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

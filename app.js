@@ -1,102 +1,683 @@
-// app.js — frontend with per-country status & CDS overlay, using /api/* redirect
+/* ═══════════════════════════════════════════════
+   MEETING RECORDER — app.js
+   Flows:
+   1. Live recording → Web Speech API → Claude analysis
+   2. Audio upload   → OpenAI Whisper  → Claude analysis
+═══════════════════════════════════════════════ */
 
-let chart;
-const ctx = document.getElementById('chart').getContext('2d');
-const statusEl = document.getElementById('status');
-
-// helpers
-const setStatus = (msg, append = false) => {
-  if (!append) statusEl.textContent = '';
-  statusEl.textContent += (statusEl.textContent ? '\n' : '') + msg;
+// ── State ──────────────────────────────────────
+const S = {
+  phase: 'idle', // idle | recording | processing | results
+  transcript: '',
+  interimTranscript: '',
+  analysis: null,
+  audioBlob: null,
+  audioFile: null,
+  mediaRecorder: null,
+  recognition: null,
+  timerInterval: null,
+  seconds: 0,
+  currentTab: 'record',
+  settings: {
+    anthropicKey: '',
+    openaiKey: '',
+    model: 'claude-sonnet-4-6',
+    lang: 'en-US',
+  },
+  history: [],
 };
 
-const fetchJSON = async (url) => {
-  const r = await fetch(url, { cache: 'no-store' });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+// ── DOM refs ───────────────────────────────────
+const $ = id => document.getElementById(id);
+
+const dom = {
+  // Settings
+  settingsBtn:     $('settingsBtn'),
+  settingsOverlay: $('settingsOverlay'),
+  closeSettings:   $('closeSettings'),
+  saveSettings:    $('saveSettings'),
+  anthropicKey:    $('anthropicKey'),
+  openaiKey:       $('openaiKey'),
+  modelSelect:     $('modelSelect'),
+  langSelect:      $('langSelect'),
+
+  // Tabs
+  tabBtns:    document.querySelectorAll('.tab[data-tab]'),
+  panels:     { record: $('panelRecord'), upload: $('panelUpload'), history: $('panelHistory') },
+
+  // Record tab
+  timerDisplay:      $('timerDisplay'),
+  statusChip:        $('statusChip'),
+  recordBtn:         $('recordBtn'),
+  recordShape:       $('recordShape'),
+  recordHint:        $('recordHint'),
+  transcriptEmpty:   $('transcriptEmpty'),
+  transcriptText:    $('transcriptText'),
+  transcriptInterim: $('transcriptInterim'),
+  analyzeBtn:        $('analyzeBtn'),
+
+  // Upload tab
+  uploadDrop:    $('uploadDrop'),
+  browseBtn:     $('browseBtn'),
+  audioFileInput:$('audioFileInput'),
+  fileCard:      $('fileCard'),
+  fileCardName:  $('fileCardName'),
+  fileCardSize:  $('fileCardSize'),
+  transcribeBtn: $('transcribeBtn'),
+  clearFileBtn:  $('clearFileBtn'),
+
+  // History
+  historyEmpty: $('historyEmpty'),
+  historyList:  $('historyList'),
+
+  // Processing
+  processingOverlay: $('processingOverlay'),
+  processingLabel:   $('processingLabel'),
+  processingSub:     $('processingSub'),
+
+  // Results
+  resultsScreen:   $('resultsScreen'),
+  resultsTitle:    $('resultsTitle'),
+  backBtn:         $('backBtn'),
+  shareBtn:        $('shareBtn'),
+  resultTabBtns:   document.querySelectorAll('.tab[data-result-tab]'),
+  resultPanels:    { summary: $('rPanelSummary'), actions: $('rPanelActions'), transcript: $('rPanelTranscript') },
+  rSummary:        $('rSummary'),
+  rDecisions:      $('rDecisions'),
+  rDecisionsCard:  $('rDecisionsCard'),
+  rFollowup:       $('rFollowup'),
+  rFollowupCard:   $('rFollowupCard'),
+  rParticipants:   $('rParticipants'),
+  rParticipantsCard: $('rParticipantsCard'),
+  rActionsList:    $('rActionsList'),
+  rNoActions:      $('rNoActions'),
+  rTranscript:     $('rTranscript'),
+  copyTranscriptBtn: $('copyTranscriptBtn'),
+
+  toast: $('toast'),
 };
 
-const loadOne = async (country, h) => {
+// ── Settings persistence ───────────────────────
+function loadSettings() {
   try {
-    const y = await fetchJSON(`/api/market?type=yield&country=${country}&h=${h}`);
-    const cds = document.getElementById('cds').checked
-      ? await fetchJSON(`/api/market?type=cds&country=${country}&h=${h}`)
-      : null;
+    const saved = JSON.parse(localStorage.getItem('meetrec_settings') || '{}');
+    Object.assign(S.settings, saved);
+  } catch {}
 
-    const found = y?.tenors ? Object.values(y.tenors).filter(v => v != null).length : 0;
-    const src = y?.src || 'n/a';
-    setStatus(`✅ ${country}: yield ${found} pts [${src}]` + (cds ? ` • cds ${cds.cds5y_bps ?? '—'} bps [${cds.src||'n/a'}]` : ''), true);
-
-    return { ok: true, country, h, y, cds };
-  } catch (e) {
-    setStatus(`❌ ${country}: ${String(e.message||e)}`, true);
-    return { ok: false, country, h, y: null, cds: null, error: String(e.message||e) };
-  }
-};
-
-const buildDatasets = (results) => {
-  const datasets = [];
-  let labels = null;
-
-  for (const res of results) {
-    if (!res.ok || !res.y || !res.y.tenors) continue;
-
-    const ts = res.y.tenors;
-    const theseLabels = Object.keys(ts);
-    if (!labels || theseLabels.length > labels.length) labels = theseLabels;
-
-    datasets.push({
-      label: `${res.country} – ${res.h}${res.y.src ? ` (${res.y.src})` : ''}`,
-      data: Object.values(ts),
-      borderWidth: 2,
-      fill: false,
-      tension: 0.25,
-      pointRadius: 2
-    });
-
-    if (res.cds && res.cds.cds5y_bps != null) {
-      datasets.push({
-        label: `${res.country} CDS 5Y`,
-        data: Array(theseLabels.length).fill(res.cds.cds5y_bps),
-        borderDash: [4, 2],
-        yAxisID: 'y1',
-        pointRadius: 0
-      });
-    }
-  }
-
-  return { labels: labels || [], datasets };
-};
-
-async function loadAll() {
-  const countries = [...document.querySelectorAll('aside input[type=checkbox][value]:checked')].map(el => el.value);
-  const h = document.querySelector('input[name=horizon]:checked').value;
-
-  setStatus('Loading...');
-  const promises = countries.map(c => loadOne(c, h));
-  const settled = await Promise.all(promises);
-
-  const { labels, datasets } = buildDatasets(settled);
-
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      interaction: { mode: 'nearest', intersect: false },
-      scales: {
-        y: { type: 'linear', position: 'left', title: { display: true, text: 'Yield (%) p.a.' } },
-        y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'CDS 5Y (bps)' } }
-      },
-      plugins: { legend: { display: true } }
-    }
-  });
-
-  const asOf = settled.find(r => r.y?.asOf)?.y.asOf || 'n/a';
-  const okCount = settled.filter(r => r.ok && r.y && r.y.tenors).length;
-  setStatus(`Done • As of ${asOf} • ${okCount}/${countries.length} countries OK`, true);
+  try {
+    S.history = JSON.parse(localStorage.getItem('meetrec_history') || '[]');
+  } catch {}
 }
 
-document.getElementById('refresh').addEventListener('click', loadAll);
-window.addEventListener('load', loadAll);
+function saveSettingsToStorage() {
+  localStorage.setItem('meetrec_settings', JSON.stringify(S.settings));
+}
+
+function saveHistoryToStorage() {
+  // Keep last 30 entries
+  localStorage.setItem('meetrec_history', JSON.stringify(S.history.slice(0, 30)));
+}
+
+function populateSettingsUI() {
+  dom.anthropicKey.value = S.settings.anthropicKey;
+  dom.openaiKey.value    = S.settings.openaiKey;
+  dom.modelSelect.value  = S.settings.model;
+  dom.langSelect.value   = S.settings.lang;
+}
+
+// ── Toast ──────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  clearTimeout(toastTimer);
+  dom.toast.textContent = msg;
+  dom.toast.className   = `toast ${type}`;
+  toastTimer = setTimeout(() => dom.toast.classList.add('hidden'), 3000);
+}
+
+// ── Timer ──────────────────────────────────────
+function startTimer() {
+  S.seconds = 0;
+  updateTimerDisplay();
+  S.timerInterval = setInterval(() => {
+    S.seconds++;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(S.timerInterval);
+  S.timerInterval = null;
+}
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(S.seconds / 60)).padStart(2, '0');
+  const s = String(S.seconds % 60).padStart(2, '0');
+  dom.timerDisplay.textContent = `${m}:${s}`;
+}
+
+// ── Transcript UI helpers ──────────────────────
+function updateTranscriptUI() {
+  const hasText = S.transcript.trim().length > 0 || S.interimTranscript.trim().length > 0;
+  dom.transcriptEmpty.classList.toggle('hidden', hasText);
+  dom.transcriptText.textContent = S.transcript;
+  dom.transcriptInterim.textContent = S.interimTranscript;
+
+  // Auto-scroll
+  const scroll = dom.transcriptText.closest('.transcript-scroll') || dom.transcriptText.parentElement;
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+// ── Recording ──────────────────────────────────
+async function startRecording() {
+  if (!S.settings.anthropicKey) {
+    showToast('Add your Anthropic API key in Settings first', 'error');
+    openSettings();
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch {
+    showToast('Microphone access denied — please allow it in Settings', 'error');
+    return;
+  }
+
+  // Reset state
+  S.transcript = '';
+  S.interimTranscript = '';
+  S.audioBlob = null;
+  updateTranscriptUI();
+
+  // MediaRecorder (captures audio for potential upload)
+  const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']
+    .find(t => MediaRecorder.isTypeSupported(t)) || '';
+  const chunks = [];
+  S.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+  S.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  S.mediaRecorder.onstop = () => {
+    S.audioBlob = new Blob(chunks, { type: S.mediaRecorder.mimeType || 'audio/mp4' });
+    stream.getTracks().forEach(t => t.stop());
+  };
+  S.mediaRecorder.start(1000);
+
+  // Speech Recognition (live transcription)
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    S.recognition = new SR();
+    S.recognition.continuous      = true;
+    S.recognition.interimResults  = true;
+    S.recognition.lang            = S.settings.lang;
+    S.recognition.maxAlternatives = 1;
+
+    S.recognition.onresult = e => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const text = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          S.transcript += text + ' ';
+        } else {
+          interim += text;
+        }
+      }
+      S.interimTranscript = interim;
+      updateTranscriptUI();
+    };
+
+    S.recognition.onerror = e => {
+      // 'no-speech' is normal; anything else log
+      if (e.error !== 'no-speech') console.warn('SR error:', e.error);
+    };
+
+    // On iOS, onend fires often — restart automatically while recording
+    S.recognition.onend = () => {
+      if (S.phase === 'recording') {
+        try { S.recognition.start(); } catch {}
+      }
+    };
+
+    try { S.recognition.start(); } catch {}
+  } else {
+    showToast('Live transcription unavailable in this browser', '');
+  }
+
+  S.phase = 'recording';
+  startTimer();
+  renderRecordUI();
+}
+
+function stopRecording() {
+  if (S.mediaRecorder && S.mediaRecorder.state !== 'inactive') {
+    S.mediaRecorder.stop();
+  }
+  if (S.recognition) {
+    try { S.recognition.stop(); } catch {}
+    S.recognition = null;
+  }
+  stopTimer();
+
+  // Commit any interim text
+  if (S.interimTranscript.trim()) {
+    S.transcript += S.interimTranscript + ' ';
+    S.interimTranscript = '';
+    updateTranscriptUI();
+  }
+
+  S.phase = 'idle';
+  renderRecordUI();
+
+  if (S.transcript.trim().length > 10) {
+    dom.analyzeBtn.classList.remove('hidden');
+  } else {
+    showToast('No transcript captured — try speaking closer to the mic', '');
+  }
+}
+
+function renderRecordUI() {
+  const isRec = S.phase === 'recording';
+  dom.recordBtn.classList.toggle('is-recording', isRec);
+  dom.statusChip.textContent = isRec ? 'Recording' : 'Ready';
+  dom.statusChip.classList.toggle('recording', isRec);
+  dom.recordHint.textContent = isRec ? 'Tap to stop' : 'Tap to start recording';
+  if (!isRec) dom.analyzeBtn.classList.add('hidden');
+}
+
+// ── Whisper transcription ──────────────────────
+async function transcribeWithWhisper(blob, filename) {
+  if (!S.settings.openaiKey) {
+    throw new Error('OpenAI API key required for file upload. Add it in Settings.');
+  }
+
+  const formData = new FormData();
+  formData.append('file', blob, filename || 'recording.m4a');
+  formData.append('model', 'whisper-1');
+  if (S.settings.lang && S.settings.lang !== 'auto') {
+    // Whisper uses ISO 639-1; extract from locale (e.g. "en-US" → "en")
+    formData.append('language', S.settings.lang.split('-')[0]);
+  }
+
+  const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${S.settings.openaiKey}` },
+    body: formData,
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Whisper error ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  return data.text || '';
+}
+
+// ── Claude analysis ────────────────────────────
+async function analyzeWithClaude(transcript) {
+  if (!S.settings.anthropicKey) {
+    throw new Error('Anthropic API key required. Add it in Settings.');
+  }
+
+  const resp = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      transcript,
+      model:  S.settings.model,
+      apiKey: S.settings.anthropicKey,
+    }),
+  });
+
+  const data = await resp.json();
+
+  if (!resp.ok) {
+    const msg = data.error?.message || data.error || `Claude error ${resp.status}`;
+    throw new Error(msg);
+  }
+
+  // Claude wraps the reply in content[0].text
+  const raw = data.content?.[0]?.text;
+  if (!raw) throw new Error('Empty response from Claude');
+
+  // Parse JSON — Claude may wrap in markdown fence
+  const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Return a minimal object if JSON fails
+    return { title: 'Meeting', summary: raw, actionItems: [], keyDecisions: [], followUpItems: [], participants: [] };
+  }
+}
+
+// ── Full pipeline ──────────────────────────────
+async function runPipeline(transcript, label) {
+  setProcessing(true, label || 'Analyzing with Claude…', 'This usually takes 5–15 seconds');
+  try {
+    const analysis = await analyzeWithClaude(transcript);
+    S.analysis = analysis;
+
+    // Save to history
+    const entry = {
+      id:         Date.now(),
+      title:      analysis.title || 'Untitled Meeting',
+      date:       new Date().toLocaleString(),
+      model:      S.settings.model,
+      transcript,
+      analysis,
+    };
+    S.history.unshift(entry);
+    saveHistoryToStorage();
+    renderHistory();
+
+    setProcessing(false);
+    showResults(transcript, analysis);
+  } catch (err) {
+    setProcessing(false);
+    showToast(err.message, 'error');
+    console.error(err);
+  }
+}
+
+function setProcessing(on, label, sub) {
+  dom.processingOverlay.classList.toggle('hidden', !on);
+  if (on) {
+    dom.processingLabel.textContent = label || 'Processing…';
+    dom.processingSub.textContent   = sub || '';
+  }
+}
+
+// ── Results screen ─────────────────────────────
+function showResults(transcript, analysis) {
+  dom.resultsTitle.textContent = analysis.title || 'Analysis';
+
+  // Summary
+  dom.rSummary.textContent = analysis.summary || '—';
+
+  // Decisions
+  renderList(dom.rDecisions, analysis.keyDecisions);
+  dom.rDecisionsCard.classList.toggle('hidden', !analysis.keyDecisions?.length);
+
+  // Follow-up
+  renderList(dom.rFollowup, analysis.followUpItems);
+  dom.rFollowupCard.classList.toggle('hidden', !analysis.followUpItems?.length);
+
+  // Participants
+  const parts = analysis.participants?.join(', ');
+  dom.rParticipants.textContent = parts || '—';
+  dom.rParticipantsCard.classList.toggle('hidden', !parts);
+
+  // Action items
+  const items = analysis.actionItems || [];
+  dom.rNoActions.classList.toggle('hidden', items.length > 0);
+  dom.rActionsList.innerHTML = items.map(renderActionCard).join('');
+
+  // Transcript
+  dom.rTranscript.textContent = transcript;
+
+  // Switch to first result tab
+  switchResultTab('summary');
+
+  dom.resultsScreen.classList.remove('hidden');
+}
+
+function renderList(ul, items) {
+  ul.innerHTML = (items || []).map(t => `<li>${escHtml(t)}</li>`).join('');
+}
+
+function renderActionCard(item) {
+  const priority = (item.priority || 'medium').toLowerCase();
+  return `<div class="action-card">
+    <div class="action-header">
+      <p class="action-task">${escHtml(item.task)}</p>
+      <span class="priority-badge priority-${priority}">${priority}</span>
+    </div>
+    <div class="action-meta">
+      <span class="action-meta-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        ${escHtml(item.owner || 'Unassigned')}
+      </span>
+      <span class="action-meta-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        ${escHtml(item.deadline || 'Not specified')}
+      </span>
+    </div>
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function switchResultTab(name) {
+  dom.resultTabBtns.forEach(b => b.classList.toggle('active', b.dataset.resultTab === name));
+  Object.entries(dom.resultPanels).forEach(([k, el]) => el.classList.toggle('hidden', k !== name));
+}
+
+// ── History ────────────────────────────────────
+function renderHistory() {
+  if (S.history.length === 0) {
+    dom.historyEmpty.classList.remove('hidden');
+    dom.historyList.innerHTML = '';
+    return;
+  }
+  dom.historyEmpty.classList.add('hidden');
+  dom.historyList.innerHTML = S.history.map((e, i) => `
+    <li class="history-item" data-index="${i}">
+      <span class="history-item-title">${escHtml(e.title)}</span>
+      <span class="history-item-meta">${escHtml(e.date)}</span>
+      <span class="history-item-model">${escHtml(e.model)}</span>
+    </li>`).join('');
+}
+
+// ── Tab switching ──────────────────────────────
+function switchTab(name) {
+  S.currentTab = name;
+  dom.tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  Object.entries(dom.panels).forEach(([k, el]) => el.classList.toggle('hidden', k !== name));
+}
+
+// ── Settings modal ─────────────────────────────
+function openSettings() {
+  populateSettingsUI();
+  dom.settingsOverlay.classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+  dom.settingsOverlay.classList.add('hidden');
+}
+
+// ── Upload tab helpers ─────────────────────────
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function showFileCard(file) {
+  S.audioFile = file;
+  dom.fileCardName.textContent = file.name;
+  dom.fileCardSize.textContent = formatBytes(file.size);
+  dom.uploadDrop.classList.add('hidden');
+  dom.fileCard.classList.remove('hidden');
+}
+
+function clearFile() {
+  S.audioFile = null;
+  dom.audioFileInput.value = '';
+  dom.fileCard.classList.add('hidden');
+  dom.uploadDrop.classList.remove('hidden');
+}
+
+// ── Share / copy ───────────────────────────────
+function buildShareText() {
+  if (!S.analysis) return '';
+  const { title, summary, actionItems, keyDecisions } = S.analysis;
+  const lines = [
+    `# ${title || 'Meeting Notes'}`,
+    '',
+    '## Summary',
+    summary || '',
+  ];
+  if (keyDecisions?.length) {
+    lines.push('', '## Key Decisions');
+    keyDecisions.forEach(d => lines.push(`- ${d}`));
+  }
+  if (actionItems?.length) {
+    lines.push('', '## Action Items');
+    actionItems.forEach(a => lines.push(`- [ ] ${a.task} (${a.owner}, ${a.deadline})`));
+  }
+  return lines.join('\n');
+}
+
+// ── Event listeners ────────────────────────────
+
+// Settings
+dom.settingsBtn.addEventListener('click', openSettings);
+dom.closeSettings.addEventListener('click', closeSettingsModal);
+dom.settingsOverlay.addEventListener('click', e => {
+  if (e.target === dom.settingsOverlay) closeSettingsModal();
+});
+dom.saveSettings.addEventListener('click', () => {
+  S.settings.anthropicKey = dom.anthropicKey.value.trim();
+  S.settings.openaiKey    = dom.openaiKey.value.trim();
+  S.settings.model        = dom.modelSelect.value;
+  S.settings.lang         = dom.langSelect.value;
+  saveSettingsToStorage();
+  closeSettingsModal();
+  showToast('Settings saved', 'success');
+});
+
+// Tab nav
+dom.tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// Record button
+dom.recordBtn.addEventListener('click', () => {
+  if (S.phase === 'recording') {
+    stopRecording();
+  } else if (S.phase === 'idle') {
+    startRecording();
+  }
+});
+
+// Analyze button
+dom.analyzeBtn.addEventListener('click', () => {
+  const text = S.transcript.trim();
+  if (!text) { showToast('No transcript to analyze', 'error'); return; }
+  runPipeline(text, 'Analyzing with Claude…');
+});
+
+// Upload tab
+dom.browseBtn.addEventListener('click', () => dom.audioFileInput.click());
+dom.uploadDrop.addEventListener('click', e => {
+  if (e.target !== dom.browseBtn) dom.audioFileInput.click();
+});
+
+dom.audioFileInput.addEventListener('change', e => {
+  const file = e.target.files?.[0];
+  if (file) showFileCard(file);
+});
+
+// Drag-and-drop
+dom.uploadDrop.addEventListener('dragover', e => {
+  e.preventDefault();
+  dom.uploadDrop.classList.add('dragover');
+});
+dom.uploadDrop.addEventListener('dragleave', () => dom.uploadDrop.classList.remove('dragover'));
+dom.uploadDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  dom.uploadDrop.classList.remove('dragover');
+  const file = e.dataTransfer.files?.[0];
+  if (file) showFileCard(file);
+});
+
+dom.clearFileBtn.addEventListener('click', clearFile);
+
+dom.transcribeBtn.addEventListener('click', async () => {
+  if (!S.audioFile) return;
+  if (!S.settings.openaiKey) {
+    showToast('OpenAI API key required for file upload — add in Settings', 'error');
+    openSettings();
+    return;
+  }
+  if (!S.settings.anthropicKey) {
+    showToast('Anthropic API key required — add in Settings', 'error');
+    openSettings();
+    return;
+  }
+
+  setProcessing(true, 'Transcribing audio…', 'Using OpenAI Whisper');
+  try {
+    const transcript = await transcribeWithWhisper(S.audioFile, S.audioFile.name);
+    if (!transcript.trim()) throw new Error('Transcription returned empty text');
+    setProcessing(false);
+    runPipeline(transcript, 'Analyzing with Claude…');
+  } catch (err) {
+    setProcessing(false);
+    showToast(err.message, 'error');
+    console.error(err);
+  }
+});
+
+// Results navigation
+dom.backBtn.addEventListener('click', () => {
+  dom.resultsScreen.classList.add('hidden');
+});
+
+dom.resultTabBtns.forEach(btn => {
+  btn.addEventListener('click', () => switchResultTab(btn.dataset.resultTab));
+});
+
+dom.copyTranscriptBtn.addEventListener('click', async () => {
+  const text = dom.rTranscript.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Transcript copied', 'success');
+  } catch {
+    showToast('Copy failed — select text manually', 'error');
+  }
+});
+
+dom.shareBtn.addEventListener('click', async () => {
+  const text = buildShareText();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: S.analysis?.title || 'Meeting Notes', text });
+    } catch {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Copied to clipboard', 'success');
+    } catch {
+      showToast('Share not supported on this device', '');
+    }
+  }
+});
+
+// History list — tap to re-open results
+dom.historyList.addEventListener('click', e => {
+  const item = e.target.closest('.history-item');
+  if (!item) return;
+  const idx = parseInt(item.dataset.index, 10);
+  const entry = S.history[idx];
+  if (!entry) return;
+  S.analysis = entry.analysis;
+  showResults(entry.transcript, entry.analysis);
+});
+
+// ── Service Worker ─────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// ── Init ───────────────────────────────────────
+loadSettings();
+renderHistory();
+renderRecordUI();
+
+// Prompt for API key on first launch
+if (!S.settings.anthropicKey) {
+  setTimeout(() => openSettings(), 600);
+}

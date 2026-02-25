@@ -3,15 +3,22 @@
 
 // ── Group icons ───────────────────────────────────────────────────────────
 const GROUP_ICONS = {
-  Mechanics:     '⚙',
-  Thermodynamics:'🌡',
-  Energy:        '⚡',
-  Fluid:         '💧',
-  Electrical:    '🔌',
-  Photometry:    '💡',
-  Radiation:     '☢',
-  Computing:     '💾',
-  Chemistry:     '🧪',
+  Mechanics:             '⚙',
+  'Rotational Mechanics':'🔄',
+  Thermodynamics:        '🌡',
+  Energy:                '⚡',
+  Fluid:                 '💧',
+  Electrical:            '🔌',
+  Electromagnetism:      '🧲',
+  Photometry:            '💡',
+  Radiometry:            '🔭',
+  Radiation:             '☢',
+  Computing:             '💾',
+  Chemistry:             '🧪',
+  Materials:             '🔩',
+  Nuclear:               '⚛',
+  Acoustics:             '🔊',
+  Crystallography:       '💎',
 };
 
 // ── State ─────────────────────────────────────────────────────────────────

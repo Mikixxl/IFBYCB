@@ -638,6 +638,594 @@ const CATEGORIES = [
       { id: 'vol%',   label: 'Volume percent (% v/v)', factor: null, note: 'dimensionless ratio' },
     ]
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHYSICS & CHEMISTRY EXTENSION  (categories 29 – 50+)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 29. ANGLE  (base: radian)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'angle',
+    name: 'Angle',
+    group: 'Rotational Mechanics',
+    base: 'rad',
+    units: [
+      { id: 'rad',   label: 'Radian (rad)',          factor: 1 },
+      { id: 'mrad',  label: 'Milliradian (mrad)',    factor: 1e-3 },
+      { id: 'µrad',  label: 'Microradian (µrad)',    factor: 1e-6 },
+      { id: 'deg',   label: 'Degree (°)',            factor: Math.PI / 180 },
+      { id: 'arcmin',label: 'Arcminute (′)',         factor: Math.PI / 10800 },
+      { id: 'arcsec',label: 'Arcsecond (″)',         factor: Math.PI / 648000 },
+      { id: 'grad',  label: 'Gradian / gon (grad)', factor: Math.PI / 200 },
+      { id: 'turn',  label: 'Turn / revolution',    factor: 2 * Math.PI },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 30. ANGULAR VELOCITY  (base: rad/s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'angularVelocity',
+    name: 'Angular Velocity',
+    group: 'Rotational Mechanics',
+    base: 'rad/s',
+    units: [
+      { id: 'rad/s',    label: 'Radian/second (rad/s)',  factor: 1 },
+      { id: 'mrad/s',   label: 'Milliradian/second (mrad/s)', factor: 1e-3 },
+      { id: 'deg/s',    label: 'Degree/second (°/s)',    factor: Math.PI / 180 },
+      { id: 'rpm_av',   label: 'RPM',                    factor: Math.PI / 30 },
+      { id: 'rps',      label: 'Rev/second (rps)',        factor: 2 * Math.PI },
+      { id: 'rad/min',  label: 'Radian/minute (rad/min)',factor: 1 / 60 },
+      { id: 'rad/h',    label: 'Radian/hour (rad/h)',    factor: 1 / 3600 },
+      { id: 'deg/min',  label: 'Degree/minute (°/min)',  factor: Math.PI / 10800 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 31. ANGULAR ACCELERATION  (base: rad/s²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'angularAccel',
+    name: 'Angular Acceleration',
+    group: 'Rotational Mechanics',
+    base: 'rad/s²',
+    units: [
+      { id: 'rad/s2',   label: 'Radian/second² (rad/s²)', factor: 1 },
+      { id: 'deg/s2',   label: 'Degree/second² (°/s²)',   factor: Math.PI / 180 },
+      { id: 'rpm/s',    label: 'RPM/second',               factor: Math.PI / 30 },
+      { id: 'rpm/min',  label: 'RPM/minute',               factor: Math.PI / 1800 },
+      { id: 'rps/s',    label: 'Rev/second²',              factor: 2 * Math.PI },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 32. LINEAR MOMENTUM / IMPULSE  (base: kg·m/s = N·s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'momentum',
+    name: 'Momentum / Impulse',
+    group: 'Mechanics',
+    base: 'kg·m/s',
+    units: [
+      { id: 'kg·m/s',    label: 'kg·m/s (= N·s)',       factor: 1 },
+      { id: 'N·s',       label: 'Newton-second (N·s)',   factor: 1 },
+      { id: 'kN·s',      label: 'Kilonewton-second (kN·s)', factor: 1e3 },
+      { id: 'g·cm/s',    label: 'g·cm/s',               factor: 1e-5 },
+      { id: 'lb·ft/s',   label: 'lb·ft/s (lbm)',        factor: 0.138254954376 },
+      { id: 'slug·ft/s', label: 'slug·ft/s (= lbf·s)',  factor: 4.44822161526 },
+      { id: 'lbf·s',     label: 'lbf·s',                factor: 4.44822161526 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 33. ANGULAR MOMENTUM  (base: kg·m²/s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'angularMomentum',
+    name: 'Angular Momentum',
+    group: 'Rotational Mechanics',
+    base: 'kg·m²/s',
+    units: [
+      { id: 'kg·m2/s',   label: 'kg·m²/s (= N·m·s)',    factor: 1 },
+      { id: 'N·m·s',     label: 'Newton-metre-second',   factor: 1 },
+      { id: 'g·cm2/s',   label: 'g·cm²/s',              factor: 1e-7 },
+      { id: 'lb·ft2/s',  label: 'lb·ft²/s (lbm)',       factor: 0.04214011 },
+      { id: 'slug·ft2/s',label: 'slug·ft²/s',            factor: 1.35581795 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 34. MOMENT OF INERTIA  (base: kg·m²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'momentOfInertia',
+    name: 'Moment of Inertia',
+    group: 'Rotational Mechanics',
+    base: 'kg·m²',
+    units: [
+      { id: 'kg·m2',    label: 'kg·m²',               factor: 1 },
+      { id: 'kg·cm2',   label: 'kg·cm²',              factor: 1e-4 },
+      { id: 'g·cm2',    label: 'g·cm²',               factor: 1e-7 },
+      { id: 'lb·ft2',   label: 'lb·ft² (lbm)',        factor: 0.04214011 },
+      { id: 'lb·in2',   label: 'lb·in² (lbm)',        factor: 2.926397e-4 },
+      { id: 'slug·ft2', label: 'slug·ft²',             factor: 1.35581795 },
+      { id: 'oz·in2',   label: 'oz·in²',              factor: 1.82900e-5 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 35. SURFACE TENSION  (base: N/m = J/m²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'surfaceTension',
+    name: 'Surface Tension',
+    group: 'Materials',
+    base: 'N/m',
+    units: [
+      { id: 'N/m',    label: 'Newton/metre (N/m = J/m²)', factor: 1 },
+      { id: 'mN/m',   label: 'Millinewton/metre (mN/m)',  factor: 1e-3 },
+      { id: 'µN/m',   label: 'Micronewton/metre (µN/m)', factor: 1e-6 },
+      { id: 'N/mm',   label: 'Newton/millimetre (N/mm)', factor: 1e3 },
+      { id: 'dyn/cm', label: 'Dyne/centimetre (dyn/cm)', factor: 1e-3 },
+      { id: 'erg/cm2',label: 'Erg/cm² (= dyn/cm)',       factor: 1e-3 },
+      { id: 'lbf/ft', label: 'lbf/ft',                   factor: 14.5939 },
+      { id: 'lbf/in', label: 'lbf/in',                   factor: 175.127 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 36. ELASTIC MODULUS / MATERIAL STIFFNESS  (base: Pa)
+  //     Distinct category from pressure for materials context.
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'elasticModulus',
+    name: 'Elastic Modulus',
+    group: 'Materials',
+    base: 'Pa',
+    units: [
+      { id: 'Pa_E',   label: 'Pascal (Pa)',          factor: 1 },
+      { id: 'kPa_E',  label: 'Kilopascal (kPa)',     factor: 1e3 },
+      { id: 'MPa_E',  label: 'Megapascal (MPa)',     factor: 1e6 },
+      { id: 'GPa_E',  label: 'Gigapascal (GPa)',     factor: 1e9 },
+      { id: 'TPa_E',  label: 'Terapascal (TPa)',     factor: 1e12 },
+      { id: 'bar_E',  label: 'Bar (bar)',            factor: 1e5 },
+      { id: 'psi_E',  label: 'psi',                  factor: 6894.757293168 },
+      { id: 'ksi_E',  label: 'ksi (kip/in²)',        factor: 6894757.293168 },
+      { id: 'Msi_E',  label: 'Msi (10⁶ psi)',       factor: 6894757293.168 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 37. FRACTURE TOUGHNESS  (base: MPa·√m = MN·m⁻³/²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'fractureToughness',
+    name: 'Fracture Toughness',
+    group: 'Materials',
+    base: 'MPa·√m',
+    units: [
+      { id: 'MPa·√m',   label: 'MPa·√m (= MN·m⁻³/²)',  factor: 1 },
+      { id: 'Pa·√m',    label: 'Pa·√m',                  factor: 1e-6 },
+      { id: 'kPa·√m',   label: 'kPa·√m',                 factor: 1e-3 },
+      { id: 'GPa·√m',   label: 'GPa·√m',                 factor: 1e3 },
+      { id: 'ksi·√in',  label: 'ksi·√in',                factor: 1.09884 },
+      { id: 'psi·√in',  label: 'psi·√in',                factor: 1.09884e-3 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 38. KINEMATIC VISCOSITY  (base: m²/s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'kinematicViscosity',
+    name: 'Kinematic Viscosity',
+    group: 'Fluid',
+    base: 'm²/s',
+    units: [
+      { id: 'm2/s_kv',   label: 'm²/s',                     factor: 1 },
+      { id: 'St',        label: 'Stokes (St) = cm²/s',       factor: 1e-4 },
+      { id: 'cSt',       label: 'Centistokes (cSt) = mm²/s', factor: 1e-6 },
+      { id: 'ft2/s_kv',  label: 'ft²/s',                     factor: 0.09290304 },
+      { id: 'ft2/h_kv',  label: 'ft²/h',                     factor: 2.58064e-5 },
+      { id: 'in2/s_kv',  label: 'in²/s',                     factor: 6.4516e-4 },
+      { id: 'm2/h_kv',   label: 'm²/h',                      factor: 1 / 3600 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 39. DIFFUSION COEFFICIENT  (base: m²/s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'diffusion',
+    name: 'Diffusion Coefficient',
+    group: 'Fluid',
+    base: 'm²/s',
+    units: [
+      { id: 'm2/s_d',  label: 'm²/s',    factor: 1 },
+      { id: 'cm2/s_d', label: 'cm²/s',   factor: 1e-4 },
+      { id: 'mm2/s_d', label: 'mm²/s',   factor: 1e-6 },
+      { id: 'ft2/s_d', label: 'ft²/s',   factor: 0.09290304 },
+      { id: 'ft2/h_d', label: 'ft²/h',   factor: 2.58064e-5 },
+      { id: 'm2/h_d',  label: 'm²/h',    factor: 1 / 3600 },
+      { id: 'cm2/h_d', label: 'cm²/h',   factor: 1e-4 / 3600 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 40. INTRINSIC PERMEABILITY (porous media)  (base: m²)
+  //     1 darcy = 9.869233×10⁻¹³ m²
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'permeabilityFluid',
+    name: 'Intrinsic Permeability',
+    group: 'Fluid',
+    base: 'm²',
+    units: [
+      { id: 'm2_perm',  label: 'm²',                     factor: 1 },
+      { id: 'µm2_perm', label: 'µm² (≈ 1.01 darcy)',     factor: 1e-12 },
+      { id: 'D',        label: 'Darcy (D)',               factor: 9.869233e-13 },
+      { id: 'mD',       label: 'Millidarcy (mD)',         factor: 9.869233e-16 },
+      { id: 'µD',       label: 'Microdarcy (µD)',         factor: 9.869233e-19 },
+      { id: 'cm2_perm', label: 'cm²',                    factor: 1e-4 },
+      { id: 'ft2_perm', label: 'ft²',                    factor: 0.09290304 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 41. MAGNETIC PERMEABILITY  (base: H/m)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'permeabilityMag',
+    name: 'Magnetic Permeability',
+    group: 'Electromagnetism',
+    base: 'H/m',
+    units: [
+      { id: 'H/m',   label: 'Henry/metre (H/m)',        factor: 1 },
+      { id: 'mH/m',  label: 'Millihenry/metre (mH/m)', factor: 1e-3 },
+      { id: 'µH/m',  label: 'Microhenry/metre (µH/m)', factor: 1e-6 },
+      { id: 'nH/m',  label: 'Nanohenry/metre (nH/m)',  factor: 1e-9 },
+      { id: 'pH/m',  label: 'Picohenry/metre (pH/m)',  factor: 1e-12 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 42. ENTROPY  (base: J/K)
+  //     Molar entropy J/(mol·K) needs n — listed with note.
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'entropy',
+    name: 'Entropy',
+    group: 'Thermodynamics',
+    base: 'J/K',
+    units: [
+      { id: 'J/K',    label: 'J/K',                     factor: 1 },
+      { id: 'kJ/K',   label: 'kJ/K',                    factor: 1e3 },
+      { id: 'MJ/K',   label: 'MJ/K',                    factor: 1e6 },
+      { id: 'cal/K',  label: 'cal/K',                   factor: 4.184 },
+      { id: 'kcal/K', label: 'kcal/K',                  factor: 4184 },
+      // 1 BTU/°R = 1055.056 J / (5/9 K) = 1899.1 J/K
+      { id: 'BTU/°R', label: 'BTU/°R',                  factor: 1899.100965 },
+      // Molar entropy — requires number of moles
+      { id: 'J/mol·K',  label: 'J/(mol·K) [molar]',   factor: null,
+        note: 'Molar entropy — needs amount of substance to convert to J/K' },
+      { id: 'kJ/mol·K', label: 'kJ/(mol·K) [molar]',  factor: null,
+        note: 'Molar entropy — needs amount of substance to convert to J/K' },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 43. SPECIFIC HEAT CAPACITY  (base: J/(kg·K))
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'specificHeat',
+    name: 'Specific Heat Capacity',
+    group: 'Thermodynamics',
+    base: 'J/(kg·K)',
+    units: [
+      { id: 'J/kg·K',      label: 'J/(kg·K)',             factor: 1 },
+      { id: 'kJ/kg·K',     label: 'kJ/(kg·K)',            factor: 1e3 },
+      { id: 'cal/g·K',     label: 'cal/(g·K) = cal/(g·°C)',factor: 4184 },
+      { id: 'kcal/kg·K',   label: 'kcal/(kg·K)',          factor: 4184 },
+      // 1 BTU/(lb·°F) = 1055.056/(0.45359237 × 5/9) = 4186.8 J/(kg·K)
+      { id: 'BTU/lb·°F',   label: 'BTU/(lb·°F)',          factor: 4186.8 },
+      { id: 'J/mol·K_cp',  label: 'J/(mol·K) [molar cp]', factor: null,
+        note: 'Molar heat capacity — needs molar mass to convert to J/(kg·K)' },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 44. THERMAL CONDUCTIVITY  (base: W/(m·K))
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'thermalConductivity',
+    name: 'Thermal Conductivity',
+    group: 'Thermodynamics',
+    base: 'W/(m·K)',
+    units: [
+      { id: 'W/m·K',        label: 'W/(m·K)',                    factor: 1 },
+      { id: 'mW/m·K',       label: 'mW/(m·K)',                   factor: 1e-3 },
+      { id: 'kW/m·K',       label: 'kW/(m·K)',                   factor: 1e3 },
+      { id: 'W/cm·K',       label: 'W/(cm·K)',                   factor: 1e2 },
+      // 1 BTU/(h·ft·°F) = 1055.056/(3600×0.3048×5/9) ≈ 1.7307 W/(m·K)
+      { id: 'BTU/h·ft·°F',  label: 'BTU/(h·ft·°F)',             factor: 1.73073466 },
+      // 1 BTU·in/(h·ft²·°F) = 1055.056×0.0254/(3600×0.09290304×5/9) ≈ 0.14423 W/(m·K)
+      { id: 'BTU·in/h·ft²·°F', label: 'BTU·in/(h·ft²·°F)',      factor: 0.14422919 },
+      // 1 cal/(s·cm·°C) = 4.184/(0.01) = 418.4 W/(m·K)
+      { id: 'cal/s·cm·°C',  label: 'cal/(s·cm·°C)',             factor: 418.4 },
+      // 1 kcal/(h·m·°C) = 4184/3600 = 1.1622 W/(m·K)
+      { id: 'kcal/h·m·°C',  label: 'kcal/(h·m·°C)',             factor: 1.16222 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 45. THERMAL DIFFUSIVITY  (base: m²/s)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'thermalDiffusivity',
+    name: 'Thermal Diffusivity',
+    group: 'Thermodynamics',
+    base: 'm²/s',
+    units: [
+      { id: 'm2/s_td',   label: 'm²/s',    factor: 1 },
+      { id: 'cm2/s_td',  label: 'cm²/s',   factor: 1e-4 },
+      { id: 'mm2/s_td',  label: 'mm²/s',   factor: 1e-6 },
+      { id: 'm2/h_td',   label: 'm²/h',    factor: 1 / 3600 },
+      { id: 'ft2/s_td',  label: 'ft²/s',   factor: 0.09290304 },
+      { id: 'ft2/h_td',  label: 'ft²/h',   factor: 2.58064e-5 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 46. MOLAR THERMODYNAMIC QUANTITIES  (base: J/mol)
+  //     Covers molar enthalpy ΔH, Gibbs energy ΔG, bond energies, etc.
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'molarEnergy',
+    name: 'Molar Energy (Enthalpy, Gibbs…)',
+    group: 'Chemistry',
+    base: 'J/mol',
+    units: [
+      { id: 'J/mol',      label: 'J/mol',            factor: 1 },
+      { id: 'kJ/mol',     label: 'kJ/mol',           factor: 1e3 },
+      { id: 'MJ/mol',     label: 'MJ/mol',           factor: 1e6 },
+      { id: 'cal/mol',    label: 'cal/mol',          factor: 4.184 },
+      { id: 'kcal/mol',   label: 'kcal/mol',         factor: 4184 },
+      // 1 eV/molecule × Nₐ = 96 485.332 J/mol
+      { id: 'eV/molec',   label: 'eV/molecule',      factor: 96485.332 },
+      { id: 'meV/molec',  label: 'meV/molecule',     factor: 96.485332 },
+      // 1 BTU/lb-mol: 1 lb-mol = 453.592 mol → 1055.056/453.592 = 2.326 J/mol
+      { id: 'BTU/lbmol',  label: 'BTU/lb-mol',       factor: 2.32600 },
+      // J/(mol·K): molar entropy/heat capacity — kept separate in category 42/43
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 47. ELECTRIC FIELD STRENGTH  (base: V/m)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'eField',
+    name: 'Electric Field Strength',
+    group: 'Electromagnetism',
+    base: 'V/m',
+    units: [
+      { id: 'V/m',     label: 'Volt/metre (V/m)',        factor: 1 },
+      { id: 'mV/m',    label: 'Millivolt/metre (mV/m)',  factor: 1e-3 },
+      { id: 'µV/m',    label: 'Microvolt/metre (µV/m)', factor: 1e-6 },
+      { id: 'kV/m',    label: 'Kilovolt/metre (kV/m)',  factor: 1e3 },
+      { id: 'MV/m',    label: 'Megavolt/metre (MV/m)',  factor: 1e6 },
+      { id: 'V/cm',    label: 'V/cm',                   factor: 1e2 },
+      { id: 'kV/cm',   label: 'kV/cm',                  factor: 1e5 },
+      { id: 'V/mm',    label: 'V/mm',                   factor: 1e3 },
+      // 1 statV/cm = 299.792 V × 100/m = 29979.2 V/m
+      { id: 'statV/cm',label: 'statV/cm (CGS)',          factor: 29979.2458 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 48. MAGNETIC FIELD STRENGTH H  (base: A/m)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'hField',
+    name: 'Magnetic Field Strength (H)',
+    group: 'Electromagnetism',
+    base: 'A/m',
+    units: [
+      { id: 'A/m',   label: 'Ampere/metre (A/m)',    factor: 1 },
+      { id: 'mA/m',  label: 'Milliampere/metre (mA/m)', factor: 1e-3 },
+      { id: 'A/cm',  label: 'A/cm',                  factor: 1e2 },
+      { id: 'kA/m',  label: 'Kiloampere/metre (kA/m)',  factor: 1e3 },
+      // 1 Oe = 1000/(4π) A/m ≈ 79.5775 A/m
+      { id: 'Oe',    label: 'Oersted (Oe)',           factor: 79.5774715459 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 49. MAGNETIC FLUX  (base: Weber, Wb)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'magFlux',
+    name: 'Magnetic Flux',
+    group: 'Electromagnetism',
+    base: 'Wb',
+    units: [
+      { id: 'Wb',   label: 'Weber (Wb = V·s)',    factor: 1 },
+      { id: 'mWb',  label: 'Milliweber (mWb)',    factor: 1e-3 },
+      { id: 'µWb',  label: 'Microweber (µWb)',    factor: 1e-6 },
+      { id: 'nWb',  label: 'Nanoweber (nWb)',     factor: 1e-9 },
+      { id: 'kWb',  label: 'Kiloweber (kWb)',     factor: 1e3 },
+      // 1 Maxwell = 1e-8 Wb
+      { id: 'Mx',   label: 'Maxwell (Mx)',         factor: 1e-8 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 50. MAGNETIC FLUX DENSITY B  (base: Tesla, T)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'bField',
+    name: 'Magnetic Flux Density (B)',
+    group: 'Electromagnetism',
+    base: 'T',
+    units: [
+      { id: 'T',   label: 'Tesla (T)',            factor: 1 },
+      { id: 'mT',  label: 'Millitesla (mT)',      factor: 1e-3 },
+      { id: 'µT',  label: 'Microtesla (µT)',      factor: 1e-6 },
+      { id: 'nT',  label: 'Nanotesla (nT = γ)',  factor: 1e-9 },
+      // 1 Gauss = 1e-4 T
+      { id: 'G',   label: 'Gauss (G)',            factor: 1e-4 },
+      { id: 'mG',  label: 'Milligauss (mG)',      factor: 1e-7 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 51. ELECTRIC FLUX DENSITY (D field)  (base: C/m²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'dField',
+    name: 'Electric Flux Density (D)',
+    group: 'Electromagnetism',
+    base: 'C/m²',
+    units: [
+      { id: 'C/m2',   label: 'C/m²',           factor: 1 },
+      { id: 'mC/m2',  label: 'mC/m²',          factor: 1e-3 },
+      { id: 'µC/m2',  label: 'µC/m²',          factor: 1e-6 },
+      { id: 'nC/m2',  label: 'nC/m²',          factor: 1e-9 },
+      { id: 'pC/m2',  label: 'pC/m²',          factor: 1e-12 },
+      { id: 'C/cm2',  label: 'C/cm²',          factor: 1e4 },
+      { id: 'µC/cm2', label: 'µC/cm²',         factor: 1e-2 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 52. CROSS SECTION (nuclear / particle physics)  (base: m²)
+  //     1 barn = 10⁻²⁸ m²
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'crossSection',
+    name: 'Cross Section',
+    group: 'Nuclear',
+    base: 'm²',
+    units: [
+      { id: 'm2_cs',  label: 'm²',               factor: 1 },
+      { id: 'cm2_cs', label: 'cm²',              factor: 1e-4 },
+      { id: 'fm2_cs', label: 'fm² (femtometre²)',factor: 1e-30 },
+      { id: 'b',      label: 'Barn (b)',          factor: 1e-28 },
+      { id: 'mb_cs',  label: 'Millibarn (mb)',    factor: 1e-31 },
+      { id: 'µb',     label: 'Microbarn (µb)',    factor: 1e-34 },
+      { id: 'nb_cs',  label: 'Nanobarn (nb)',     factor: 1e-37 },
+      { id: 'pb_cs',  label: 'Picobarn (pb)',     factor: 1e-40 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 53. IRRADIANCE  (base: W/m²)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'irradiance',
+    name: 'Irradiance',
+    group: 'Radiometry',
+    base: 'W/m²',
+    units: [
+      { id: 'W/m2_ir',   label: 'W/m²',            factor: 1 },
+      { id: 'mW/m2_ir',  label: 'mW/m²',           factor: 1e-3 },
+      { id: 'µW/m2_ir',  label: 'µW/m²',           factor: 1e-6 },
+      { id: 'kW/m2_ir',  label: 'kW/m²',           factor: 1e3 },
+      { id: 'MW/m2_ir',  label: 'MW/m²',           factor: 1e6 },
+      { id: 'W/cm2_ir',  label: 'W/cm²',           factor: 1e4 },
+      { id: 'µW/cm2_ir', label: 'µW/cm²',          factor: 1e-2 },
+      // 1 BTU/(h·ft²) = 0.29307/0.09290304 = 3.1546 W/m²
+      { id: 'BTU/h·ft2', label: 'BTU/(h·ft²)',      factor: 3.15459 },
+      // 1 sun ≈ 1361 W/m² (solar constant at top of atmosphere)
+      { id: 'sun',       label: 'Sun (solar const.)',factor: 1361 },
+      // 1 langley/min = 41840 J/m² / 60 s = 697.33 W/m²
+      { id: 'ly/min',    label: 'Langley/min',       factor: 697.333 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 54. RADIANCE  (base: W/(m²·sr))
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'radiance',
+    name: 'Radiance',
+    group: 'Radiometry',
+    base: 'W/(m²·sr)',
+    units: [
+      { id: 'W/m2sr',    label: 'W/(m²·sr)',       factor: 1 },
+      { id: 'mW/m2sr',   label: 'mW/(m²·sr)',      factor: 1e-3 },
+      { id: 'µW/m2sr',   label: 'µW/(m²·sr)',      factor: 1e-6 },
+      { id: 'kW/m2sr',   label: 'kW/(m²·sr)',      factor: 1e3 },
+      { id: 'W/cm2sr',   label: 'W/(cm²·sr)',      factor: 1e4 },
+      { id: 'µW/cm2sr',  label: 'µW/(cm²·sr)',     factor: 1e-2 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 55. RADIANT INTENSITY  (base: W/sr)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'radiantIntensity',
+    name: 'Radiant Intensity',
+    group: 'Radiometry',
+    base: 'W/sr',
+    units: [
+      { id: 'W/sr',   label: 'Watt/steradian (W/sr)',  factor: 1 },
+      { id: 'mW/sr',  label: 'mW/sr',                  factor: 1e-3 },
+      { id: 'µW/sr',  label: 'µW/sr',                  factor: 1e-6 },
+      { id: 'kW/sr',  label: 'kW/sr',                  factor: 1e3 },
+      { id: 'MW/sr',  label: 'MW/sr',                  factor: 1e6 },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 56. SOUND INTENSITY  (base: W/m²)
+  //     Includes logarithmic dB IL scale (I₀ = 10⁻¹² W/m²).
+  //     Marked affine: true so each unit uses toBase / fromBase.
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'soundIntensity',
+    name: 'Sound Intensity',
+    group: 'Acoustics',
+    base: 'W/m²',
+    affine: true,
+    units: [
+      { id: 'W/m2_si',  label: 'W/m²',     toBase: v => v,           fromBase: v => v },
+      { id: 'mW/m2_si', label: 'mW/m²',    toBase: v => v * 1e-3,    fromBase: v => v * 1e3 },
+      { id: 'µW/m2_si', label: 'µW/m²',    toBase: v => v * 1e-6,    fromBase: v => v * 1e6 },
+      { id: 'pW/m2_si', label: 'pW/m²',    toBase: v => v * 1e-12,   fromBase: v => v * 1e12 },
+      { id: 'nW/m2_si', label: 'nW/m²',    toBase: v => v * 1e-9,    fromBase: v => v * 1e9 },
+      {
+        id: 'dB_IL',
+        label: 'dB IL (re 10⁻¹² W/m²)',
+        toBase:   v => 1e-12 * Math.pow(10, v / 10),
+        fromBase: v => v > 0 ? 10 * Math.log10(v / 1e-12) : -Infinity
+      },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 57. CRYSTALLOGRAPHY LENGTH UNITS  (base: metre)
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    id: 'crystalLength',
+    name: 'Crystallography Lengths',
+    group: 'Crystallography',
+    base: 'm',
+    units: [
+      { id: 'm_cl',   label: 'Metre (m)',              factor: 1 },
+      { id: 'nm_cl',  label: 'Nanometre (nm)',         factor: 1e-9 },
+      { id: 'pm_cl',  label: 'Picometre (pm)',         factor: 1e-12 },
+      { id: 'fm_cl',  label: 'Femtometre (fm)',        factor: 1e-15 },
+      // 1 Å = 10⁻¹⁰ m = 0.1 nm = 100 pm
+      { id: 'Å',      label: 'Ångström (Å)',           factor: 1e-10 },
+      // Bohr radius a₀ = 5.29177210903×10⁻¹¹ m
+      { id: 'a0',     label: 'Bohr radius (a₀)',       factor: 5.29177210903e-11 },
+      // X-unit (Siegbahn) ≈ 1.002e-13 m (rarely used but present in old literature)
+      { id: 'xu',     label: 'X-unit (Siegbahn, XU)', factor: 1.0021e-13 },
+    ]
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

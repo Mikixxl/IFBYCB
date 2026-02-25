@@ -23,20 +23,52 @@
       </div>
 
       <div class="header-center-logo">
-        <svg class="ifb-logo" viewBox="0 0 160 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="IFB Logo">
-          <!-- Emblem circle -->
-          <circle cx="28" cy="28" r="25" stroke="#60a5fa" stroke-width="1.8" fill="none"/>
-          <!-- Globe latitude lines -->
-          <ellipse cx="28" cy="28" rx="10" ry="25" stroke="#60a5fa" stroke-width="1.1" fill="none" opacity="0.55"/>
-          <line x1="3" y1="28" x2="53" y2="28" stroke="#60a5fa" stroke-width="1.1" opacity="0.55"/>
-          <path d="M7 17 Q28 22 49 17" stroke="#60a5fa" stroke-width="1" fill="none" opacity="0.45"/>
-          <path d="M7 39 Q28 34 49 39" stroke="#60a5fa" stroke-width="1" fill="none" opacity="0.45"/>
-          <!-- IFB text -->
-          <text x="82" y="24" font-family="'Segoe UI',system-ui,sans-serif" font-size="22" font-weight="800" fill="#f1f5f9" letter-spacing="-0.5">IFB</text>
-          <!-- Sub-text -->
-          <text x="82" y="39" font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="500" fill="#94a3b8" letter-spacing="2.5">BOND ANALYTICS</text>
-          <!-- Accent line -->
-          <line x1="82" y1="43" x2="154" y2="43" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+        <svg class="ifb-logo" viewBox="0 0 210 80" xmlns="http://www.w3.org/2000/svg" aria-label="IFB Logo">
+          <defs>
+            <!-- Blue gradient for 3D letter effect -->
+            <linearGradient id="ifbBlueTop" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#bfdbfe"/>
+              <stop offset="30%"  stop-color="#60a5fa"/>
+              <stop offset="70%"  stop-color="#1d4ed8"/>
+              <stop offset="100%" stop-color="#1e3a8a"/>
+            </linearGradient>
+            <!-- Gold gradient for upper ribbon -->
+            <linearGradient id="ifbGold1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#fef9c3"/>
+              <stop offset="25%"  stop-color="#fde047"/>
+              <stop offset="60%"  stop-color="#d97706"/>
+              <stop offset="100%" stop-color="#78350f"/>
+            </linearGradient>
+            <!-- Gold gradient for lower ribbon -->
+            <linearGradient id="ifbGold2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#fef3c7"/>
+              <stop offset="30%"  stop-color="#fbbf24"/>
+              <stop offset="70%"  stop-color="#b45309"/>
+              <stop offset="100%" stop-color="#92400e"/>
+            </linearGradient>
+            <!-- 3D depth shadow filter -->
+            <filter id="ifbShadow" x="-5%" y="-5%" width="115%" height="120%">
+              <feDropShadow dx="2.5" dy="2.5" stdDeviation="1.5" flood-color="#0c1a3a" flood-opacity="0.55"/>
+            </filter>
+          </defs>
+
+          <!-- 3D letter depth layers (offset dark copies) -->
+          <text x="5"  y="52" font-family="Georgia,'Times New Roman',serif" font-size="54" font-weight="900" fill="#0f2044" opacity="0.7" letter-spacing="-1">IFB</text>
+          <text x="3.5" y="50.5" font-family="Georgia,'Times New Roman',serif" font-size="54" font-weight="900" fill="#1e3a8a" opacity="0.8" letter-spacing="-1">IFB</text>
+
+          <!-- Main IFB letters -->
+          <text x="2" y="49" font-family="Georgia,'Times New Roman',serif" font-size="54" font-weight="900"
+                fill="url(#ifbBlueTop)" letter-spacing="-1" filter="url(#ifbShadow)">IFB</text>
+
+          <!-- Upper gold ribbon -->
+          <path d="M0 60 C28 50, 75 64, 128 56 C158 51, 188 55, 210 46
+                   L210 56 C188 65, 158 61, 128 66 C75 74, 28 60, 0 70 Z"
+                fill="url(#ifbGold1)"/>
+
+          <!-- Lower gold ribbon (slightly smaller and offset) -->
+          <path d="M4 72 C32 62, 80 76, 133 68 C162 63, 190 67, 210 58
+                   L210 66 C190 75, 162 71, 133 76 C80 84, 32 70, 4 80 Z"
+                fill="url(#ifbGold2)"/>
         </svg>
       </div>
 

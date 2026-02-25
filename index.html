@@ -2,44 +2,132 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
-  <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Professional Unit Converter</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">⟳</span>
       <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+        <h1>Unit Converter</h1>
+        <p class="subtitle">28 categories · 300+ units</p>
+      </div>
+    </div>
+
+    <input
+      type="search"
+      id="category-search"
+      placeholder="Search categories…"
+      autocomplete="off"
+    />
+
+    <nav id="category-nav">
+      <!-- Populated by app.js -->
+    </nav>
+  </aside>
+
+  <!-- ── MAIN ─────────────────────────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- Header bar -->
+    <header class="main-header">
+      <h2 id="cat-title">Select a category</h2>
+      <span id="cat-base" class="cat-base"></span>
+    </header>
+
+    <!-- Converter card -->
+    <section id="converter-card" class="hidden">
+
+      <!-- FROM row -->
+      <div class="conv-row">
+        <div class="conv-field">
+          <label for="from-value">Value</label>
+          <input
+            type="number"
+            id="from-value"
+            placeholder="Enter value"
+            step="any"
+          />
+        </div>
+        <div class="conv-field">
+          <label for="from-unit">From</label>
+          <select id="from-unit"></select>
+        </div>
       </div>
 
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
+      <!-- Swap button -->
+      <div class="swap-row">
+        <button id="swap-btn" title="Swap units">⇅</button>
       </div>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
+      <!-- TO row -->
+      <div class="conv-row">
+        <div class="conv-field result-field">
+          <label for="to-value">Result</label>
+          <input
+            type="text"
+            id="to-value"
+            readonly
+            placeholder="—"
+          />
+        </div>
+        <div class="conv-field">
+          <label for="to-unit">To</label>
+          <select id="to-unit"></select>
+        </div>
       </div>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
+      <!-- Formula / note row -->
+      <div id="formula-row" class="formula-row hidden">
+        <span id="formula-text"></span>
+      </div>
 
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
-  </div>
+      <!-- Copy button -->
+      <div class="actions-row">
+        <button id="copy-btn" class="btn-secondary">Copy result</button>
+        <button id="clear-btn" class="btn-ghost">Clear</button>
+      </div>
+
+    </section>
+
+    <!-- Full conversion table -->
+    <section id="table-section" class="hidden">
+      <div class="table-header">
+        <h3>All conversions for <span id="table-value-label">—</span></h3>
+        <input
+          type="search"
+          id="unit-search"
+          placeholder="Filter units…"
+          autocomplete="off"
+        />
+      </div>
+      <div id="table-container">
+        <table id="conv-table">
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th>Value</th>
+              <th>Symbol</th>
+            </tr>
+          </thead>
+          <tbody id="conv-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Empty state -->
+    <div id="empty-state">
+      <div class="empty-icon">⟳</div>
+      <p>Choose a category from the sidebar to start converting.</p>
+    </div>
+
+  </main>
+
+  <script src="units.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

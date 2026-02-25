@@ -62,6 +62,7 @@ const dom = {
   transcriptText:    $('transcriptText'),
   transcriptInterim: $('transcriptInterim'),
   analyzeBtn:        $('analyzeBtn'),
+  whisperRecordBtn:  $('whisperRecordBtn'),
 
   // Upload tab
   uploadDrop:    $('uploadDrop'),
@@ -209,6 +210,8 @@ async function startRecording() {
   S.mediaRecorder.onstop = () => {
     S.audioBlob = new Blob(chunks, { type: S.mediaRecorder.mimeType || 'audio/mp4' });
     stream.getTracks().forEach(t => t.stop());
+    // Show Whisper button now that audio blob is ready
+    if (S.phase !== 'recording') dom.whisperRecordBtn.classList.remove('hidden');
   };
   S.mediaRecorder.start(1000);
 
@@ -289,12 +292,11 @@ function stopRecording() {
   S.phase = 'idle';
   renderRecordUI();
 
+  // Show live transcript button only if speech recognition captured something
   if (S.transcript.trim().length > 10) {
     dom.analyzeBtn.classList.remove('hidden');
-  } else if (!S._srErrored?.()) {
-    // Only show mic hint when there was no recognition error already shown
-    showToast('No transcript captured — try speaking closer to the mic', '');
   }
+  // Whisper button is shown by onstop handler once the audio blob is ready
 }
 
 function renderRecordUI() {
@@ -303,7 +305,9 @@ function renderRecordUI() {
   dom.statusChip.textContent = isRec ? 'Recording' : 'Ready';
   dom.statusChip.classList.toggle('recording', isRec);
   dom.recordHint.textContent = isRec ? 'Tap to stop' : 'Tap to start recording';
-  if (!isRec) dom.analyzeBtn.classList.add('hidden');
+  // Always hide both analyze buttons; stopRecording / onstop will show them when appropriate
+  dom.analyzeBtn.classList.add('hidden');
+  dom.whisperRecordBtn.classList.add('hidden');
 }
 
 // ── Whisper transcription ──────────────────────
@@ -625,11 +629,39 @@ dom.recordBtn.addEventListener('click', () => {
   }
 });
 
-// Analyze button
+// Analyze button (live transcript)
 dom.analyzeBtn.addEventListener('click', () => {
   const text = S.transcript.trim();
   if (!text) { showToast('No transcript to analyze', 'error'); return; }
   runPipeline(text, 'Analyzing with Claude…');
+});
+
+// Whisper button (transcribe recorded audio, then analyze)
+dom.whisperRecordBtn.addEventListener('click', async () => {
+  if (!S.settings.openaiKey) {
+    showToast('OpenAI API key required for Whisper — add it in Settings', 'error');
+    openSettings();
+    return;
+  }
+  if (!S.audioBlob) {
+    showToast('No audio to transcribe', 'error');
+    return;
+  }
+  const mimeType = S.audioBlob.type || 'audio/webm';
+  const ext = mimeType.includes('webm') ? 'webm'
+            : mimeType.includes('mp4')  ? 'mp4'
+            : mimeType.includes('ogg')  ? 'ogg' : 'webm';
+  setProcessing(true, 'Transcribing with Whisper…', 'Processing recorded audio at full speed');
+  try {
+    const transcript = await transcribeWithWhisper(S.audioBlob, `recording.${ext}`);
+    if (!transcript.trim()) throw new Error('Transcription returned empty text');
+    setProcessing(false);
+    runPipeline(transcript, 'Analyzing with Claude…');
+  } catch (err) {
+    setProcessing(false);
+    showToast(err.message, 'error');
+    console.error(err);
+  }
 });
 
 // Upload tab

@@ -3,43 +3,411 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
+  <title>BondCalc Pro — Fixed Income Analytics</title>
   <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="20,2 38,11 38,29 20,38 2,29 2,11" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
+          <polyline points="8,20 16,14 24,26 32,20" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div>
+          <h1>BondCalc Pro</h1>
+          <p class="logo-sub">Fixed Income Analytics</p>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="pricer" role="tab">Bond Pricer</button>
+        <button class="tab" data-tab="ytm" role="tab">YTM Calculator</button>
+        <button class="tab" data-tab="risk" role="tab">Duration &amp; Risk</button>
+        <button class="tab" data-tab="cashflow" role="tab">Cash Flow Schedule</button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ══════════════════════════════════════════════
+         TAB 1 — BOND PRICER
+    ══════════════════════════════════════════════ -->
+    <section id="tab-pricer" class="tab-content active" role="tabpanel">
+      <div class="grid-2">
+
+        <!-- Inputs -->
+        <div class="card">
+          <h2>Bond Parameters</h2>
+          <div class="form-group">
+            <label for="p-face">Face / Par Value ($)</label>
+            <input type="number" id="p-face" value="1000" min="1" step="100"/>
+          </div>
+          <div class="form-group">
+            <label for="p-coupon">Annual Coupon Rate (%)</label>
+            <input type="number" id="p-coupon" value="5.00" step="0.01" min="0"/>
+          </div>
+          <div class="form-group">
+            <label for="p-maturity">Years to Maturity</label>
+            <input type="number" id="p-maturity" value="10" min="0.25" step="0.5"/>
+          </div>
+          <div class="form-group">
+            <label for="p-yield">Required Yield / YTM (%)</label>
+            <input type="number" id="p-yield" value="6.00" step="0.01"/>
+          </div>
+          <div class="form-group">
+            <label for="p-freq">Coupon Frequency</label>
+            <select id="p-freq">
+              <option value="2" selected>Semi-Annual (Standard US)</option>
+              <option value="1">Annual</option>
+              <option value="4">Quarterly</option>
+              <option value="12">Monthly</option>
+            </select>
+          </div>
+          <button class="btn-primary" id="calc-price">Calculate Price</button>
+        </div>
+
+        <!-- Results -->
+        <div class="card results-card">
+          <h2>Pricing Results</h2>
+          <div class="result-grid">
+            <div class="result-item highlight-blue">
+              <span class="result-label">Clean Price</span>
+              <span class="result-value" id="r-clean-price">—</span>
+            </div>
+            <div class="result-item highlight-blue">
+              <span class="result-label">Price per $100</span>
+              <span class="result-value" id="r-price-100">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Current Yield</span>
+              <span class="result-value" id="r-current-yield">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Annual Coupon Income</span>
+              <span class="result-value" id="r-annual-coupon">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Macaulay Duration</span>
+              <span class="result-value" id="r-mac-dur">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Modified Duration</span>
+              <span class="result-value" id="r-mod-dur">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Convexity</span>
+              <span class="result-value" id="r-convexity">—</span>
+            </div>
+            <div class="result-item highlight-amber">
+              <span class="result-label">DV01 (per $1M notional)</span>
+              <span class="result-value" id="r-dv01">—</span>
+            </div>
+          </div>
+          <div class="premium-indicator" id="r-premium"></div>
+        </div>
       </div>
 
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
+      <!-- Price-Yield Chart -->
+      <div class="card chart-card">
+        <h2>Price – Yield Relationship</h2>
+        <div class="chart-container">
+          <canvas id="price-yield-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ══════════════════════════════════════════════
+         TAB 2 — YTM CALCULATOR
+    ══════════════════════════════════════════════ -->
+    <section id="tab-ytm" class="tab-content" role="tabpanel">
+      <div class="grid-2">
+
+        <!-- Inputs -->
+        <div class="card">
+          <h2>Bond Parameters</h2>
+          <div class="form-group">
+            <label for="y-face">Face / Par Value ($)</label>
+            <input type="number" id="y-face" value="1000" min="1" step="100"/>
+          </div>
+          <div class="form-group">
+            <label for="y-coupon">Annual Coupon Rate (%)</label>
+            <input type="number" id="y-coupon" value="5.00" step="0.01" min="0"/>
+          </div>
+          <div class="form-group">
+            <label for="y-maturity">Years to Maturity</label>
+            <input type="number" id="y-maturity" value="10" min="0.25" step="0.5"/>
+          </div>
+          <div class="form-group">
+            <label for="y-price">Current Market Price ($)</label>
+            <input type="number" id="y-price" value="950" step="0.01" min="1"/>
+          </div>
+          <div class="form-group">
+            <label for="y-freq">Coupon Frequency</label>
+            <select id="y-freq">
+              <option value="2" selected>Semi-Annual (Standard US)</option>
+              <option value="1">Annual</option>
+              <option value="4">Quarterly</option>
+              <option value="12">Monthly</option>
+            </select>
+          </div>
+          <button class="btn-primary" id="calc-ytm">Calculate YTM</button>
+        </div>
+
+        <!-- Results -->
+        <div class="card results-card">
+          <h2>Yield Results</h2>
+          <div class="result-grid">
+            <div class="result-item highlight-green">
+              <span class="result-label">Yield to Maturity (YTM)</span>
+              <span class="result-value" id="ry-ytm">—</span>
+            </div>
+            <div class="result-item highlight-green">
+              <span class="result-label">Current Yield</span>
+              <span class="result-value" id="ry-current">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">YTM vs Current Yield</span>
+              <span class="result-value" id="ry-spread">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Simple Total Return</span>
+              <span class="result-value" id="ry-total-return">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Macaulay Duration</span>
+              <span class="result-value" id="ry-mac-dur">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Modified Duration</span>
+              <span class="result-value" id="ry-mod-dur">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Convexity</span>
+              <span class="result-value" id="ry-convexity">—</span>
+            </div>
+            <div class="result-item highlight-amber">
+              <span class="result-label">DV01 (per $1M notional)</span>
+              <span class="result-value" id="ry-dv01">—</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
+      <!-- YTM Chart -->
+      <div class="card chart-card">
+        <h2>Price – Yield Curve &amp; Your Bond</h2>
+        <div class="chart-container">
+          <canvas id="ytm-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ══════════════════════════════════════════════
+         TAB 3 — DURATION & RISK
+    ══════════════════════════════════════════════ -->
+    <section id="tab-risk" class="tab-content" role="tabpanel">
+      <div class="grid-2">
+
+        <!-- Inputs -->
+        <div class="card">
+          <h2>Bond &amp; Portfolio Parameters</h2>
+          <div class="form-group">
+            <label for="ri-face">Face / Par Value ($)</label>
+            <input type="number" id="ri-face" value="1000" min="1" step="100"/>
+          </div>
+          <div class="form-group">
+            <label for="ri-coupon">Annual Coupon Rate (%)</label>
+            <input type="number" id="ri-coupon" value="5.00" step="0.01" min="0"/>
+          </div>
+          <div class="form-group">
+            <label for="ri-maturity">Years to Maturity</label>
+            <input type="number" id="ri-maturity" value="10" min="0.25" step="0.5"/>
+          </div>
+          <div class="form-group">
+            <label for="ri-yield">YTM / Required Yield (%)</label>
+            <input type="number" id="ri-yield" value="6.00" step="0.01"/>
+          </div>
+          <div class="form-group">
+            <label for="ri-freq">Coupon Frequency</label>
+            <select id="ri-freq">
+              <option value="2" selected>Semi-Annual (Standard US)</option>
+              <option value="1">Annual</option>
+              <option value="4">Quarterly</option>
+              <option value="12">Monthly</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ri-notional">Portfolio Notional ($M)</label>
+            <input type="number" id="ri-notional" value="10" min="0.01" step="1"/>
+          </div>
+          <button class="btn-primary" id="calc-risk">Calculate Risk Metrics</button>
+        </div>
+
+        <!-- Risk metrics summary -->
+        <div class="card results-card">
+          <h2>Risk Metrics</h2>
+          <div class="result-grid">
+            <div class="result-item highlight-blue">
+              <span class="result-label">Macaulay Duration</span>
+              <span class="result-value" id="rr-mac-dur">—</span>
+              <span class="result-unit">years</span>
+            </div>
+            <div class="result-item highlight-blue">
+              <span class="result-label">Modified Duration</span>
+              <span class="result-value" id="rr-mod-dur">—</span>
+              <span class="result-unit">years</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Convexity</span>
+              <span class="result-value" id="rr-convexity">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">DV01 (per bond)</span>
+              <span class="result-value" id="rr-dv01">—</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">BPV (per $100 face)</span>
+              <span class="result-value" id="rr-bpv">—</span>
+            </div>
+            <div class="result-item highlight-amber">
+              <span class="result-label">Portfolio DV01</span>
+              <span class="result-value" id="rr-portfolio-dv01">—</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
+      <!-- Scenario analysis -->
+      <div class="card">
+        <h2>Yield Shock Scenario Analysis</h2>
+        <div class="table-wrapper">
+          <table class="data-table scenario-table">
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>New YTM</th>
+                <th>Price per $100</th>
+                <th>Price Change ($)</th>
+                <th>% Change</th>
+                <th>Approx. Change (Dur+Conv)</th>
+              </tr>
+            </thead>
+            <tbody id="scenario-tbody">
+              <tr><td colspan="6" class="empty-row">Run calculation to see scenarios</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
-  </div>
+      <!-- Cash flow PV bar chart -->
+      <div class="card chart-card">
+        <h2>Present Value of Cash Flows</h2>
+        <div class="chart-container">
+          <canvas id="risk-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ══════════════════════════════════════════════
+         TAB 4 — CASH FLOW SCHEDULE
+    ══════════════════════════════════════════════ -->
+    <section id="tab-cashflow" class="tab-content" role="tabpanel">
+      <div class="card" style="margin-bottom:1.25rem;">
+        <h2>Bond Parameters</h2>
+        <div class="inline-form">
+          <div class="form-group">
+            <label for="cf-face">Face Value ($)</label>
+            <input type="number" id="cf-face" value="1000" min="1" step="100"/>
+          </div>
+          <div class="form-group">
+            <label for="cf-coupon">Coupon Rate (%)</label>
+            <input type="number" id="cf-coupon" value="5.00" step="0.01" min="0"/>
+          </div>
+          <div class="form-group">
+            <label for="cf-maturity">Years to Maturity</label>
+            <input type="number" id="cf-maturity" value="10" min="0.25" step="0.5"/>
+          </div>
+          <div class="form-group">
+            <label for="cf-yield">Discount Rate / YTM (%)</label>
+            <input type="number" id="cf-yield" value="6.00" step="0.01"/>
+          </div>
+          <div class="form-group">
+            <label for="cf-freq">Coupon Frequency</label>
+            <select id="cf-freq">
+              <option value="2" selected>Semi-Annual</option>
+              <option value="1">Annual</option>
+              <option value="4">Quarterly</option>
+              <option value="12">Monthly</option>
+            </select>
+          </div>
+          <div class="form-group btn-group-inline">
+            <label>&nbsp;</label>
+            <button class="btn-primary" id="calc-cf">Generate Schedule</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary stats -->
+      <div class="stats-row" id="cf-stats" style="display:none;">
+        <div class="stat-chip">
+          <span class="stat-label">Bond Price</span>
+          <span class="stat-val" id="cf-stat-price">—</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-label">Total Coupons</span>
+          <span class="stat-val" id="cf-stat-coupons">—</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-label">Total Cash Flow</span>
+          <span class="stat-val" id="cf-stat-total">—</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-label">Periods</span>
+          <span class="stat-val" id="cf-stat-periods">—</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-label">Macaulay Duration</span>
+          <span class="stat-val" id="cf-stat-dur">—</span>
+        </div>
+      </div>
+
+      <!-- Cash flow table -->
+      <div class="card">
+        <h2>Detailed Cash Flow Schedule</h2>
+        <div class="table-wrapper cf-table-wrapper">
+          <table class="data-table cf-table">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Year</th>
+                <th>Coupon</th>
+                <th>Principal</th>
+                <th>Total CF</th>
+                <th>PV of CF</th>
+                <th>% of Price</th>
+                <th>Cumulative PV</th>
+              </tr>
+            </thead>
+            <tbody id="cf-tbody">
+              <tr><td colspan="8" class="empty-row">Run calculation to see cash flows</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>BondCalc Pro &mdash; All calculations use standard fixed-rate bond pricing formulae. For informational purposes only.</p>
+  </footer>
+
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,4 +1,6 @@
 // Proxy to Anthropic API — avoids CORS restriction in browser
+const fetch = require('node-fetch');
+
 exports.handler = async (event) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',

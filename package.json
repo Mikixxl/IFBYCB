@@ -1,9 +1,13 @@
 {
-  "name": "ifbsby-static",
+  "name": "bondcalc-pro",
   "private": true,
   "version": "1.0.0",
-  "description": "Static HTML deployment for IFB SBY",
+  "description": "Professional Bond Calculator — Fixed Income Analytics",
   "scripts": {
-    "build": "echo \"no build\""
+    "build": "echo 'no build step'"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "node-fetch": "^2.7.0"
   }
 }

@@ -1,9 +1,0 @@
-{
-  "name": "ifbycb-functions",
-  "version": "1.0.0",
-  "description": "Netlify serverless functions for IFBYCB",
-  "dependencies": {
-    "cheerio": "^1.0.0",
-    "node-fetch": "^2.7.0"
-  }
-}

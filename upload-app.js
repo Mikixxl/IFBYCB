@@ -5,7 +5,13 @@
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
   const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
-  const API_URL = '/.netlify/functions/upload-handler';
+
+  // ===== BACKEND CONFIGURATION =====
+  // Set your Google Apps Script Web App URL here after deployment.
+  // Leave empty to fall back to the Netlify function backend.
+  const GAS_URL = '';
+  const NETLIFY_URL = '/.netlify/functions/upload-handler';
+  const API_URL = GAS_URL || NETLIFY_URL;
 
   // State
   const state = {
@@ -295,13 +301,23 @@
 
   // --- Helpers ---
   async function apiCall(action, data) {
+    const payload = JSON.stringify({ action, ...data });
+    const isGAS = API_URL.includes('script.google.com');
+
     const res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...data })
+      headers: isGAS
+        ? { 'Content-Type': 'text/plain' }   // text/plain avoids CORS preflight for Apps Script
+        : { 'Content-Type': 'application/json' },
+      body: payload
     });
-    const json = await res.json();
-    if (!res.ok || json.error) throw new Error(json.error || `Server error (${res.status})`);
+
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (_) { throw new Error('Invalid response from server.'); }
+
+    if (json.error) throw new Error(json.error);
     return json;
   }
 

@@ -302,13 +302,44 @@
   // --- Helpers ---
   async function apiCall(action, data) {
     const payload = JSON.stringify({ action, ...data });
-    const isGAS = API_URL.includes('script.google.com');
 
-    const res = await fetch(API_URL, {
+    // Try Google Apps Script first if configured, fall back to Netlify
+    if (GAS_URL) {
+      try {
+        return await gasCall(payload);
+      } catch (err) {
+        console.warn('GAS call failed, falling back to Netlify:', err.message);
+        return await netlifyCall(payload);
+      }
+    }
+    return await netlifyCall(payload);
+  }
+
+  async function gasCall(payload) {
+    const res = await fetch(GAS_URL, {
       method: 'POST',
-      headers: isGAS
-        ? { 'Content-Type': 'text/plain' }   // text/plain avoids CORS preflight for Apps Script
-        : { 'Content-Type': 'application/json' },
+      body: payload,
+      redirect: 'follow',
+      mode: 'cors'
+    });
+
+    if (!res.ok && res.type !== 'cors') {
+      throw new Error('GAS request failed: ' + res.status);
+    }
+
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (_) { throw new Error('Invalid response from Apps Script.'); }
+
+    if (json.error) throw new Error(json.error);
+    return json;
+  }
+
+  async function netlifyCall(payload) {
+    const res = await fetch(NETLIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: payload
     });
 

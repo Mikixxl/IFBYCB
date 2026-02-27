@@ -10,22 +10,31 @@
   <header class="site-header">
     <div class="header-inner">
       <div class="logo-area">
-        <span class="logo-text"><span class="logo-i">I</span><span class="logo-f">F</span><span class="logo-b">B</span></span>
+        <img src="logo.svg" alt="IFB Logo" class="header-logo"/>
         <span class="logo-subtitle">International Finance Bank LTD</span>
       </div>
       <div class="header-badge">Secure Upload Portal</div>
     </div>
   </header>
 
-  <!-- Access Gate -->
+  <!-- Client Identification Gate -->
   <section id="access-gate" class="card access-card">
+    <img src="logo.svg" alt="IFB Logo" class="gate-logo"/>
     <h1>Client Document Upload</h1>
-    <p>Please enter your access code to begin uploading your onboarding documents.</p>
-    <div class="form-group">
-      <label for="access-code">Access Code</label>
-      <input type="text" id="access-code" placeholder="Enter your access code" autocomplete="off"/>
+    <p>Please enter your details below to begin uploading your onboarding documents.</p>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-name">Full Name <span class="required">*</span></label>
+      <input type="text" id="gate-name" placeholder="John Doe" autocomplete="name"/>
     </div>
-    <button id="btn-access" class="btn btn-primary">Continue</button>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-company">Company Name</label>
+      <input type="text" id="gate-company" placeholder="Company Ltd." autocomplete="organization"/>
+    </div>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-email">Email Address <span class="required">*</span></label>
+      <input type="email" id="gate-email" placeholder="john@example.com" autocomplete="email"/>
+    </div>
+    <button id="btn-access" class="btn btn-primary btn-large">Continue</button>
     <p id="access-error" class="error-text" hidden></p>
   </section>
 
@@ -40,24 +49,14 @@
       </div>
     </section>
 
-    <!-- Client Information -->
+    <!-- Client Information (pre-filled from gate) -->
     <section class="card">
       <h2>1. Your Information</h2>
+      <div class="client-summary" id="client-summary"></div>
+      <input type="hidden" id="client-name"/>
+      <input type="hidden" id="client-email"/>
+      <input type="hidden" id="client-company"/>
       <div class="form-row">
-        <div class="form-group">
-          <label for="client-name">Full Name <span class="required">*</span></label>
-          <input type="text" id="client-name" placeholder="John Doe" required/>
-        </div>
-        <div class="form-group">
-          <label for="client-email">Email Address <span class="required">*</span></label>
-          <input type="email" id="client-email" placeholder="john@example.com" required/>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="client-company">Company Name <small>(if applicable)</small></label>
-          <input type="text" id="client-company" placeholder="Company Ltd."/>
-        </div>
         <div class="form-group">
           <label for="client-phone">Phone Number</label>
           <input type="tel" id="client-phone" placeholder="+49 123 456 7890"/>

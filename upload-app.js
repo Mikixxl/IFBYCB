@@ -22,7 +22,9 @@
 
   const elGate       = $('#access-gate');
   const elMain       = $('#upload-main');
-  const elAccessCode = $('#access-code');
+  const elGateName   = $('#gate-name');
+  const elGateCompany= $('#gate-company');
+  const elGateEmail  = $('#gate-email');
   const elAccessBtn  = $('#btn-access');
   const elAccessErr  = $('#access-error');
   const elSubmitBtn  = $('#btn-submit');
@@ -37,29 +39,38 @@
   const elSofHeading = $('#sof-heading');
   const elAddHeading = $('#additional-heading');
 
-  // --- Access Gate ---
-  elAccessBtn.addEventListener('click', verifyAccess);
-  elAccessCode.addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyAccess(); });
+  // --- Access Gate (Name / Company / Email) ---
+  elAccessBtn.addEventListener('click', verifyClient);
+  elGateEmail.addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyClient(); });
 
-  async function verifyAccess() {
-    const code = elAccessCode.value.trim();
-    if (!code) { showError(elAccessErr, 'Please enter your access code.'); return; }
-    elAccessBtn.disabled = true;
-    elAccessBtn.textContent = 'Verifying...';
-    try {
-      const res = await apiCall('verify', { code });
-      if (res.valid) {
-        state.accessVerified = true;
-        elGate.hidden = true;
-        elMain.hidden = false;
-      } else {
-        showError(elAccessErr, 'Invalid access code. Please try again or contact your account manager.');
-      }
-    } catch (err) {
-      showError(elAccessErr, 'Connection error. Please try again.');
+  function verifyClient() {
+    elAccessErr.hidden = true;
+    const name = elGateName.value.trim();
+    const company = elGateCompany.value.trim();
+    const email = elGateEmail.value.trim();
+
+    if (!name) { showError(elAccessErr, 'Please enter your full name.'); return; }
+    if (!email) { showError(elAccessErr, 'Please enter your email address.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError(elAccessErr, 'Please enter a valid email address.');
+      return;
     }
-    elAccessBtn.disabled = false;
-    elAccessBtn.textContent = 'Continue';
+
+    // Pass values into the main form hidden fields
+    $('#client-name').value = name;
+    $('#client-email').value = email;
+    $('#client-company').value = company;
+
+    // Show summary in the main form
+    const summary = $('#client-summary');
+    summary.innerHTML =
+      '<div class="summary-row"><strong>' + escHtml(name) + '</strong></div>' +
+      (company ? '<div class="summary-row">' + escHtml(company) + '</div>' : '') +
+      '<div class="summary-row">' + escHtml(email) + '</div>';
+
+    state.accessVerified = true;
+    elGate.hidden = true;
+    elMain.hidden = false;
   }
 
   // --- Company toggle ---

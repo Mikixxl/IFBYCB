@@ -26,14 +26,20 @@
   to = "/.netlify/functions/upload-handler"
   status = 200
 
+# Root redirects to upload portal
+[[redirects]]
+  from = "/"
+  to = "/upload.html"
+  status = 200
+
 # Serve upload page at /upload
 [[redirects]]
   from = "/upload"
   to = "/upload.html"
   status = 200
 
-# SPA fallback for yield curve app (exclude upload and API routes)
+# Fallback
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/upload.html"
   status = 200

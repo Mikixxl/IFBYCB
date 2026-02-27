@@ -10,14 +10,10 @@
 [[headers]]
   for = "/*"
   [headers.values]
-  Cache-Control = "public, max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/upload.html"
-  [headers.values]
   X-Frame-Options = "DENY"
   X-Content-Type-Options = "nosniff"
   Referrer-Policy = "strict-origin-when-cross-origin"
+  Cache-Control = "public, max-age=0, must-revalidate"
   Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' /.netlify/functions/*"
 
 # Upload handler API route
@@ -26,19 +22,19 @@
   to = "/.netlify/functions/upload-handler"
   status = 200
 
-# Root redirects to upload portal
+# Root serves upload portal
 [[redirects]]
   from = "/"
   to = "/upload.html"
   status = 200
 
-# Serve upload page at /upload
+# /upload also serves upload portal
 [[redirects]]
   from = "/upload"
   to = "/upload.html"
   status = 200
 
-# Fallback
+# All other paths → upload portal
 [[redirects]]
   from = "/*"
   to = "/upload.html"

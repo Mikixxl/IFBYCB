@@ -303,34 +303,31 @@
   async function apiCall(action, data) {
     const payload = JSON.stringify({ action, ...data });
 
-    // Try Google Apps Script first if configured, fall back to Netlify
+    // Use Google Apps Script directly — no fallback to avoid double submissions
     if (GAS_URL) {
-      try {
-        return await gasCall(payload);
-      } catch (err) {
-        console.warn('GAS call failed, falling back to Netlify:', err.message);
-        return await netlifyCall(payload);
-      }
+      return await gasCall(payload);
     }
     return await netlifyCall(payload);
   }
 
   async function gasCall(payload) {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: payload,
-      redirect: 'follow',
-      mode: 'cors'
-    });
-
-    if (!res.ok && res.type !== 'cors') {
-      throw new Error('GAS request failed: ' + res.status);
+    let res;
+    try {
+      res = await fetch(GAS_URL, {
+        method: 'POST',
+        body: payload
+      });
+    } catch (networkErr) {
+      throw new Error('Network error connecting to server. Please check your connection and try again.');
     }
 
     const text = await res.text();
     let json;
     try { json = JSON.parse(text); }
-    catch (_) { throw new Error('Invalid response from Apps Script.'); }
+    catch (_) {
+      console.error('GAS raw response:', text.substring(0, 500));
+      throw new Error('Unexpected server response. Please try again.');
+    }
 
     if (json.error) throw new Error(json.error);
     return json;
@@ -346,7 +343,10 @@
     const text = await res.text();
     let json;
     try { json = JSON.parse(text); }
-    catch (_) { throw new Error('Invalid response from server.'); }
+    catch (_) {
+      console.error('Netlify raw response:', res.status, text.substring(0, 500));
+      throw new Error('Server error (' + res.status + '). Please try again.');
+    }
 
     if (json.error) throw new Error(json.error);
     return json;

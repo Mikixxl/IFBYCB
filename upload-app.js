@@ -9,7 +9,7 @@
   // ===== BACKEND CONFIGURATION =====
   // Set your Google Apps Script Web App URL here after deployment.
   // Leave empty to fall back to the Netlify function backend.
-  const GAS_URL = '';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbz5f_4yNT6EhUglvUTpfXh615VnPmQTNbqyuqpzA0nC28sgtCPYxaXD_PwcsOHCCCG3/exec';
   const NETLIFY_URL = '/.netlify/functions/upload-handler';
   const API_URL = GAS_URL || NETLIFY_URL;
 

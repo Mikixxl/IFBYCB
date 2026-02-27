@@ -76,7 +76,7 @@ async function handleInit(body) {
   // Create folder in storage backend
   if (googleConfigured()) {
     const token = await getGoogleAccessToken();
-    const parentId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    const parentId = process.env.GOOGLE_DRIVE_FOLDER_ID || '1Zlp7fSMnVRiWbkRSYCoVB9-UwxmmJIgH';
     folderId = await createGoogleFolder(token, folderName, parentId);
   } else if (onedriveConfigured()) {
     folderId = await createOneDriveFolder(folderName);
@@ -185,7 +185,7 @@ async function handleComplete(body) {
 // ============================================================
 
 function googleConfigured() {
-  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON && process.env.GOOGLE_DRIVE_FOLDER_ID);
+  return !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 }
 
 /** Create a JWT and exchange it for a Google access token */

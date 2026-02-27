@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Secure Document Upload — International Finance Bank LTD</title>
+  <link rel="stylesheet" href="upload-styles.css"/>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-area">
+        <span class="logo-text"><span class="logo-i">I</span><span class="logo-f">F</span><span class="logo-b">B</span></span>
+        <span class="logo-subtitle">International Finance Bank LTD</span>
+      </div>
+      <div class="header-badge">Secure Upload Portal</div>
+    </div>
+  </header>
+
+  <!-- Access Gate -->
+  <section id="access-gate" class="card access-card">
+    <h1>Client Document Upload</h1>
+    <p>Please enter your access code to begin uploading your onboarding documents.</p>
+    <div class="form-group">
+      <label for="access-code">Access Code</label>
+      <input type="text" id="access-code" placeholder="Enter your access code" autocomplete="off"/>
+    </div>
+    <button id="btn-access" class="btn btn-primary">Continue</button>
+    <p id="access-error" class="error-text" hidden></p>
+  </section>
+
+  <!-- Main Upload Form (hidden until access granted) -->
+  <main id="upload-main" hidden>
+    <section class="card intro-card">
+      <h1>Onboarding Document Submission</h1>
+      <p>Please upload the required compliance documents below. All files are transmitted securely via encrypted connection and stored in our protected cloud storage.</p>
+      <div class="info-box">
+        <strong>Accepted formats:</strong> PDF, JPG, PNG &nbsp;|&nbsp;
+        <strong>Max file size:</strong> 10 MB per file
+      </div>
+    </section>
+
+    <!-- Client Information -->
+    <section class="card">
+      <h2>1. Your Information</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-name">Full Name <span class="required">*</span></label>
+          <input type="text" id="client-name" placeholder="John Doe" required/>
+        </div>
+        <div class="form-group">
+          <label for="client-email">Email Address <span class="required">*</span></label>
+          <input type="email" id="client-email" placeholder="john@example.com" required/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-company">Company Name <small>(if applicable)</small></label>
+          <input type="text" id="client-company" placeholder="Company Ltd."/>
+        </div>
+        <div class="form-group">
+          <label for="client-phone">Phone Number</label>
+          <input type="tel" id="client-phone" placeholder="+49 123 456 7890"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="is-company"/>
+          This account is being opened for a <strong>company / entity</strong>
+        </label>
+      </div>
+    </section>
+
+    <!-- Document Upload Sections -->
+    <section class="card">
+      <h2>2. Account Opening Form</h2>
+      <p>Download the Account Opening Form, fill it with your data, sign on each page, and upload the completed form below.</p>
+      <div class="upload-zone" data-doc="account-opening-form">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your signed form here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. Passport &amp; Proof of Residence</h2>
+      <p>Please upload a copy of your <strong>passport</strong> and a <strong>proof of residence</strong> (utility bill or bank statement, max 3 months old).</p>
+
+      <label class="upload-label">Passport Copy <span class="required">*</span></label>
+      <div class="upload-zone" data-doc="passport">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your passport scan here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+
+      <label class="upload-label">Proof of Residence <span class="required">*</span></label>
+      <div class="upload-zone" data-doc="proof-of-residence">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your utility bill / bank statement here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <section class="card" id="company-docs-section" hidden>
+      <h2>4. Company Documents</h2>
+      <p>Since this is a company account, please upload copies of your <strong>Company Registration / Certificate of Incorporation</strong> and <strong>Beneficial Ownership Declaration</strong>.</p>
+      <div class="upload-zone" data-doc="company-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your company documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 id="sof-heading">4. Source of Funds Declaration</h2>
+      <p>Please upload a signed Source of Funds Declaration.</p>
+      <div class="upload-zone" data-doc="source-of-funds">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your declaration here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 id="additional-heading">5. Additional Information</h2>
+      <p>Please describe what you specifically want to do with your account, and upload any additional supporting documents.</p>
+      <div class="form-group">
+        <label for="additional-notes">Account Purpose / Notes</label>
+        <textarea id="additional-notes" rows="4" placeholder="Please describe the intended use of your account..."></textarea>
+      </div>
+      <div class="upload-zone" data-doc="additional-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> additional documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB. Optional.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- Submit -->
+    <section class="card submit-card">
+      <div class="legal-text">
+        <label>
+          <input type="checkbox" id="consent-check"/>
+          I confirm that all documents provided are authentic and accurate. I consent to the processing of my personal data in accordance with applicable data protection regulations for the purpose of account opening and compliance review.
+        </label>
+      </div>
+      <button id="btn-submit" class="btn btn-primary btn-large" disabled>Submit Documents</button>
+      <div id="upload-progress" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <p id="progress-text">Uploading documents...</p>
+      </div>
+      <p id="submit-error" class="error-text" hidden></p>
+    </section>
+
+    <!-- Success State -->
+    <section id="success-state" class="card success-card" hidden>
+      <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <h2>Documents Submitted Successfully</h2>
+      <p>Thank you for submitting your onboarding documents. Our compliance team will review your submission and you will receive a confirmation email shortly.</p>
+      <p>If you have any questions, please contact us at:</p>
+      <div class="contact-info">
+        <a href="mailto:legal@infiba.com">legal@infiba.com</a> &nbsp;|&nbsp;
+        <a href="mailto:legal@bafiin.com">legal@bafiin.com</a> &nbsp;|&nbsp;
+        <a href="mailto:admin@intfiba.com">admin@intfiba.com</a>
+      </div>
+      <p id="submission-ref"></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>International Finance Bank LTD &mdash; Secure Document Portal</p>
+    <p><small>All transmissions are encrypted. Documents are stored securely in compliance with data protection regulations.</small></p>
+  </footer>
+
+  <script src="upload-app.js"></script>
+</body>
+</html>

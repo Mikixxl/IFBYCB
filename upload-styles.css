@@ -1,0 +1,356 @@
+/* === IFB Upload Portal — Styles === */
+:root {
+  --navy: #1a2744;
+  --navy-light: #243352;
+  --gold: #c9a84c;
+  --gold-light: #e0c96e;
+  --text: #333333;
+  --text-light: #666666;
+  --bg: #f5f6f8;
+  --white: #ffffff;
+  --border: #dde1e7;
+  --success: #1a8a4a;
+  --success-bg: #edf7f0;
+  --error: #c0392b;
+  --error-bg: #fdf0ef;
+  --radius: 8px;
+  --shadow: 0 2px 12px rgba(26,39,68,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* === Header === */
+.site-header {
+  background: var(--navy);
+  color: var(--white);
+  padding: 0 24px;
+  border-bottom: 3px solid var(--gold);
+}
+.header-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+}
+.logo-area { display: flex; align-items: center; gap: 14px; }
+.logo-text {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 32px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+.logo-i { color: var(--gold); }
+.logo-f { color: var(--white); }
+.logo-b { color: var(--gold); }
+.logo-subtitle {
+  font-size: 13px;
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+}
+.header-badge {
+  background: rgba(201,168,76,0.15);
+  color: var(--gold);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(201,168,76,0.3);
+}
+
+/* === Cards === */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px;
+  margin: 0 auto 20px;
+  max-width: 800px;
+}
+.card h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--navy);
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+.card h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--navy);
+  font-size: 20px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--gold);
+}
+.card p { color: var(--text-light); margin-bottom: 16px; }
+
+main { padding: 24px 16px 40px; }
+
+/* === Access Gate === */
+.access-card {
+  margin-top: 80px;
+  max-width: 480px;
+  text-align: center;
+}
+.access-card h1 { margin-bottom: 12px; }
+
+/* === Intro === */
+.intro-card { border-left: 4px solid var(--gold); }
+.info-box {
+  background: var(--bg);
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-light);
+  margin-bottom: 0;
+}
+
+/* === Forms === */
+.form-row { display: flex; gap: 16px; margin-bottom: 4px; }
+.form-row .form-group { flex: 1; }
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--navy);
+}
+.form-group label small { font-weight: 400; color: var(--text-light); }
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="tel"],
+.form-group textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201,168,76,0.15);
+}
+.form-group input[type="checkbox"] {
+  margin-right: 8px;
+  accent-color: var(--navy);
+}
+.required { color: var(--error); }
+
+/* === Upload Zones === */
+.upload-label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--navy);
+  margin: 16px 0 8px;
+}
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+  position: relative;
+}
+.upload-zone:hover,
+.upload-zone.dragover {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.04);
+}
+.upload-zone.has-file {
+  border-style: solid;
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+.upload-zone.has-error {
+  border-color: var(--error);
+  background: var(--error-bg);
+}
+.upload-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--border);
+  margin-bottom: 8px;
+}
+.upload-zone:hover .upload-icon,
+.upload-zone.dragover .upload-icon { color: var(--gold); }
+.upload-zone p { margin-bottom: 4px; color: var(--text); }
+.upload-zone small { color: var(--text-light); font-size: 13px; }
+.browse-link { color: var(--gold); text-decoration: underline; cursor: pointer; }
+
+/* File Preview */
+.file-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: left;
+}
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+}
+.file-item .file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+.file-item .file-size { color: var(--text-light); font-size: 13px; white-space: nowrap; }
+.file-item .file-remove {
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.file-item .file-status {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.file-item .file-status.uploading { color: var(--gold); }
+.file-item .file-status.done { color: var(--success); }
+.file-item .file-status.failed { color: var(--error); }
+
+/* === Buttons === */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--navy);
+  color: var(--white);
+}
+.btn-primary:hover:not(:disabled) { background: var(--navy-light); }
+.btn-primary:disabled {
+  background: var(--border);
+  color: var(--text-light);
+  cursor: not-allowed;
+}
+.btn-large { padding: 14px 48px; font-size: 16px; width: 100%; }
+
+/* === Progress === */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 16px 0 8px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--navy), var(--gold));
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+#progress-text {
+  font-size: 14px;
+  color: var(--text-light);
+  text-align: center;
+  margin: 0;
+}
+
+/* === Submit / Legal === */
+.submit-card { text-align: center; }
+.legal-text {
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.legal-text label { display: flex; gap: 10px; align-items: flex-start; }
+.legal-text input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+
+/* === Success State === */
+.success-card {
+  text-align: center;
+  border-left: 4px solid var(--success);
+  max-width: 800px;
+}
+.success-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--success);
+  margin-bottom: 16px;
+}
+.success-card h2 { border: none; text-align: center; color: var(--success); }
+.contact-info {
+  margin: 12px 0;
+  font-size: 15px;
+}
+.contact-info a { color: var(--navy); font-weight: 600; }
+#submission-ref {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+/* === Error Text === */
+.error-text {
+  color: var(--error);
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+/* === Footer === */
+.site-footer {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-light);
+  font-size: 14px;
+  border-top: 1px solid var(--border);
+  max-width: 800px;
+  margin: 0 auto;
+}
+.site-footer p { margin-bottom: 4px; }
+.site-footer small { font-size: 12px; }
+
+/* === Responsive === */
+@media (max-width: 640px) {
+  .header-inner { flex-direction: column; height: auto; padding: 16px 0; gap: 8px; }
+  .logo-area { flex-direction: column; gap: 4px; text-align: center; }
+  .form-row { flex-direction: column; gap: 0; }
+  .card { padding: 20px 16px; margin-left: 8px; margin-right: 8px; }
+  .card h1 { font-size: 22px; }
+  .upload-zone { padding: 24px 16px; }
+  .btn-large { padding: 12px 24px; }
+}

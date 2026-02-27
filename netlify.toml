@@ -2,13 +2,36 @@
   publish = "."
   functions = "netlify/functions"
 
+[functions]
+  node_bundler = "esbuild"
+
 [[headers]]
   for = "/*"
   [headers.values]
   Cache-Control = "public, max-age=0, must-revalidate"
 
-# Uncomment this block only if you use client-side routing and want SPA fallback
+[[headers]]
+  for = "/upload.html"
+  [headers.values]
+  X-Frame-Options = "DENY"
+  X-Content-Type-Options = "nosniff"
+  Referrer-Policy = "strict-origin-when-cross-origin"
+  Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' /.netlify/functions/*"
+
+# Upload handler API route
 [[redirects]]
-  from = "/*"  
+  from = "/api/upload"
+  to = "/.netlify/functions/upload-handler"
+  status = 200
+
+# Serve upload page at /upload
+[[redirects]]
+  from = "/upload"
+  to = "/upload.html"
+  status = 200
+
+# SPA fallback for yield curve app (exclude upload and API routes)
+[[redirects]]
+  from = "/*"
   to = "/index.html"
-  status = 200[build]
+  status = 200

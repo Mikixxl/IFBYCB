@@ -201,16 +201,21 @@ let ycData  = null;
 const ycActive = new Set();
 
 async function initYieldCurve() {
+  const statusEl = document.getElementById("yc-status");
   try {
     const res = await fetch("/api/yield-curves", { cache:"no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     ycData = await res.json();
+    if (!ycData.countries || ycData.countries.length === 0) {
+      statusEl.textContent = ycData.status || "Yield curve data not yet available — updates daily at 06:00 UTC.";
+      return;
+    }
     ycData.countries.forEach(c => ycActive.add(c.code));
     buildToggles("yc-toggles", ycData.countries, ycActive, renderYCChart);
     renderYCChart();
-    document.getElementById("yc-status").textContent =
-      `Data as of ${ycData.asOf}. Yield curves reflect approximate early-2026 market levels.`;
+    statusEl.textContent = `Data as of ${ycData.asOf}.`;
   } catch(e) {
-    document.getElementById("yc-status").textContent = `Error: ${e.message}`;
+    statusEl.textContent = `Error: ${e.message}`;
   }
 }
 
@@ -262,12 +267,20 @@ const HM_TENOR_LABEL = {
 };
 
 async function initHeatmap() {
+  const tbl = document.getElementById("heatmap-tbl");
   try {
-    if (!ycData) { const r = await fetch("/api/yield-curves",{cache:"no-store"}); ycData = await r.json(); }
+    if (!ycData) {
+      const r = await fetch("/api/yield-curves", { cache:"no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      ycData = await r.json();
+    }
+    if (!ycData.countries || ycData.countries.length === 0) {
+      tbl.innerHTML = `<tr><td class="placeholder">${ycData?.status || "Yield curve data not yet available — updates daily at 06:00 UTC."}</td></tr>`;
+      return;
+    }
     renderHeatmap();
   } catch(e) {
-    document.getElementById("heatmap-tbl").innerHTML =
-      `<tr><td colspan="9" class="placeholder">Error: ${e.message}</td></tr>`;
+    tbl.innerHTML = `<tr><td colspan="9" class="placeholder">Error: ${e.message}</td></tr>`;
   }
 }
 

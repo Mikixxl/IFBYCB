@@ -42,10 +42,21 @@ exports.handler = async (event, context) => {
     };
   } catch (err) {
     console.error("yield-curves error:", err);
+    // Return empty payload rather than 500 so the frontend can show a friendly message
     return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ error: "Failed to load yield curve data." }),
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+      },
+      body: JSON.stringify({
+        asOf: null,
+        tenors: [],
+        countries: [],
+        curves: {},
+        status: "Yield curve data not yet available — updates daily at 06:00 UTC.",
+      }),
     };
   }
 };

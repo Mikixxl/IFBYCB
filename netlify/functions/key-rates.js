@@ -1,9 +1,13 @@
 // key-rates.js
 // Returns historical central bank policy rates for 8 countries/regions.
-// Data is hardcoded (accurate historical records through early 2026).
+// Historical records are hardcoded (accurate through early 2026).
+// Current rate is read from Netlify Blobs (populated daily by fetch-bonds.js)
+// and appended if it differs from the last historical entry.
 //
 // GET /api/key-rates
 // Response: { countries, history: { CODE: [[isoDate, rate], ...] } }
+
+const { getStore } = require("@netlify/blobs");
 
 const COUNTRIES = [
   { code:"US", label:"USA",            flag:"🇺🇸", color:"#2962ff" },
@@ -94,12 +98,47 @@ const RAW = {
   ],
 };
 
-exports.handler = async () => ({
-  statusCode: 200,
-  headers: {
-    "Content-Type": "application/json",
-    "Cache-Control": "public, max-age=3600",
-    "Access-Control-Allow-Origin": "*",
-  },
-  body: JSON.stringify({ countries: COUNTRIES, history: RAW }),
-});
+exports.handler = async (event, context) => {
+  // Deep-copy historical data so we can safely append live rates
+  const history = {};
+  for (const code of Object.keys(RAW)) {
+    history[code] = RAW[code].map(row => [...row]);
+  }
+
+  // Try to read the current live rates from Blobs and append if changed
+  try {
+    const store = getStore({ name: "bonds-cache", consistency: "strong" });
+    const liveData = await store.get("cb-rates", { type: "json" });
+
+    if (liveData && liveData.rates && liveData.asOf) {
+      const today = liveData.asOf;
+      for (const code of Object.keys(liveData.rates)) {
+        const liveRate = liveData.rates[code];
+        if (liveRate == null || !history[code]) continue;
+
+        const rows = history[code];
+        const lastRate = rows[rows.length - 1][1];
+
+        // Append today's rate only if it differs from the last known rate
+        // and today's date is newer than the last recorded date
+        const lastDate = rows[rows.length - 1][0];
+        if (liveRate !== lastRate && today > lastDate) {
+          rows.push([today, liveRate]);
+        }
+      }
+    }
+  } catch (err) {
+    // Blob read failure is non-fatal — return historical data only
+    console.warn("key-rates: failed to read cb-rates blob:", err.message);
+  }
+
+  return {
+    statusCode: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=3600",
+      "Access-Control-Allow-Origin": "*",
+    },
+    body: JSON.stringify({ countries: COUNTRIES, history }),
+  };
+};

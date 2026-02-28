@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Global Bonds Market — Live 10Y Yields</title>
   <link rel="stylesheet" href="styles.css"/>
+  <!-- Chart.js v4 + date adapter for the time-scale step chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
 
-  <!-- ── Header ── -->
+  <!-- ── Header ─────────────────────────────────────────────────────────────── -->
   <header class="site-header">
     <div class="header-brand">
       <span class="brand-icon">📈</span>
@@ -22,66 +25,163 @@
     </div>
   </header>
 
-  <!-- ── Main ── -->
+  <!-- ── Main ───────────────────────────────────────────────────────────────── -->
   <main class="page">
 
     <div class="page-hero">
       <h1 class="page-title">Government Bonds</h1>
-      <p class="page-sub">10-Year sovereign bond yields across 35 countries — updates every 60 s</p>
+      <p class="page-sub">Sovereign bond market data — rates, curves, and central bank policy</p>
     </div>
 
-    <!-- Toolbar: region tabs + search -->
-    <div class="toolbar">
-      <div class="region-tabs" id="region-tabs" role="tablist">
-        <button class="tab active" data-region="All"                  role="tab">All</button>
-        <button class="tab"        data-region="Americas"             role="tab">Americas</button>
-        <button class="tab"        data-region="Europe"               role="tab">Europe</button>
-        <button class="tab"        data-region="Asia Pacific"         role="tab">Asia Pacific</button>
-        <button class="tab"        data-region="Africa &amp; Middle East" role="tab">Middle East &amp; Africa</button>
+    <!-- ── Main navigation tabs ───────────────────────────────────────────── -->
+    <nav class="main-tabs" id="main-tabs" role="tablist">
+      <button class="mtab active" data-sec="rates"       role="tab">Rates</button>
+      <button class="mtab"        data-sec="yield-curve" role="tab">Yield curve</button>
+      <button class="mtab"        data-sec="heatmap"     role="tab">Yield heatmap</button>
+      <button class="mtab"        data-sec="key-rates"   role="tab">Key interest rates</button>
+      <button class="mtab"        data-sec="events"      role="tab">Interest rate events</button>
+    </nav>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         SECTION 1 — RATES TABLE (existing)
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <section id="sec-rates">
+
+      <div class="toolbar">
+        <div class="region-tabs" id="region-tabs" role="tablist">
+          <button class="tab active" data-region="All"                  role="tab">All</button>
+          <button class="tab"        data-region="Americas"             role="tab">Americas</button>
+          <button class="tab"        data-region="Europe"               role="tab">Europe</button>
+          <button class="tab"        data-region="Asia Pacific"         role="tab">Asia Pacific</button>
+          <button class="tab"        data-region="Africa &amp; Middle East" role="tab">Middle East &amp; Africa</button>
+        </div>
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search" placeholder="Search country…" autocomplete="off" />
+        </div>
       </div>
-      <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="search" placeholder="Search country…" autocomplete="off" />
+
+      <div class="status-bar">
+        <span id="status-msg" class="status-msg"></span>
+        <span class="legend">
+          <span class="pill pill-up">▲ yield rising</span>
+          <span class="pill pill-dn">▼ yield falling</span>
+          <span class="pill pill-live">● live</span>
+          <span class="pill pill-demo">◌ demo</span>
+        </span>
       </div>
-    </div>
 
-    <!-- Data status bar -->
-    <div class="status-bar">
-      <span id="status-msg" class="status-msg"></span>
-      <span class="legend">
-        <span class="pill pill-up">▲ yield rising</span>
-        <span class="pill pill-dn">▼ yield falling</span>
-        <span class="pill pill-live">● live</span>
-        <span class="pill pill-demo">◌ demo</span>
-      </span>
-    </div>
+      <div class="table-wrap">
+        <table id="bonds-table" aria-label="Government Bond Yields">
+          <thead>
+            <tr>
+              <th class="col-flag"></th>
+              <th class="col-name  sortable" data-col="name">Country <span class="si">↕</span></th>
+              <th class="col-yield sortable" data-col="yield10y">Yield&nbsp;% <span class="si">↕</span></th>
+              <th class="col-chg   sortable" data-col="change1d">1D&nbsp;chg <span class="si">↕</span></th>
+              <th class="col-chg   sortable" data-col="change1w">1W&nbsp;chg <span class="si">↕</span></th>
+              <th class="col-chg   sortable" data-col="change1m">1M&nbsp;chg <span class="si">↕</span></th>
+              <th class="col-chg   sortable" data-col="change6m">6M&nbsp;chg <span class="si">↕</span></th>
+              <th class="col-chg   sortable" data-col="change1y">1Y&nbsp;chg <span class="si">↕</span></th>
+              <th class="col-rtg   sortable" data-col="rating">Rating <span class="si">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="bonds-body">
+            <tr><td colspan="9" class="placeholder">Loading market data…</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-    <!-- Bonds table -->
-    <div class="table-wrap">
-      <table id="bonds-table" aria-label="Government Bond Yields">
-        <thead>
-          <tr>
-            <th class="col-flag"></th>
-            <th class="col-name  sortable" data-col="name">Country <span class="si">↕</span></th>
-            <th class="col-yield sortable" data-col="yield10y">Yield&nbsp;% <span class="si">↕</span></th>
-            <th class="col-chg   sortable" data-col="change1d">1D&nbsp;chg <span class="si">↕</span></th>
-            <th class="col-chg   sortable" data-col="change1w">1W&nbsp;chg <span class="si">↕</span></th>
-            <th class="col-chg   sortable" data-col="change1m">1M&nbsp;chg <span class="si">↕</span></th>
-            <th class="col-chg   sortable" data-col="change6m">6M&nbsp;chg <span class="si">↕</span></th>
-            <th class="col-chg   sortable" data-col="change1y">1Y&nbsp;chg <span class="si">↕</span></th>
-            <th class="col-rtg   sortable" data-col="rating">Rating <span class="si">↕</span></th>
-          </tr>
-        </thead>
-        <tbody id="bonds-body">
-          <tr><td colspan="9" class="placeholder">Loading market data…</td></tr>
-        </tbody>
-      </table>
-    </div>
+      <div class="table-footer">
+        <span id="row-count"></span>
+        <span class="disclaimer">Data sourced from worldgovernmentbonds.com — for informational purposes only.</span>
+      </div>
 
-    <div class="table-footer">
-      <span id="row-count"></span>
-      <span class="disclaimer">Data sourced from worldgovernmentbonds.com — for informational purposes only.</span>
-    </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         SECTION 2 — YIELD CURVE
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <section id="sec-yield-curve" hidden>
+
+      <div class="sec-header">
+        <div>
+          <h2 class="sec-title">Yield curve</h2>
+          <p class="sec-sub">Full maturity spectrum — 1 month to 30 years</p>
+        </div>
+      </div>
+
+      <div id="yc-toggles" class="country-toggles"></div>
+
+      <div class="chart-wrap">
+        <canvas id="yc-chart"></canvas>
+      </div>
+
+      <p id="yc-status" class="sec-note"></p>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         SECTION 3 — YIELD HEATMAP
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <section id="sec-heatmap" hidden>
+
+      <div class="sec-header">
+        <div>
+          <h2 class="sec-title">Yield heatmap</h2>
+          <p class="sec-sub">Bond yields by country and maturity — darker green = higher yield</p>
+        </div>
+      </div>
+
+      <div class="heatmap-wrap">
+        <table id="heatmap-tbl"></table>
+      </div>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         SECTION 4 — KEY INTEREST RATES
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <section id="sec-key-rates" hidden>
+
+      <div class="sec-header">
+        <div>
+          <h2 class="sec-title">Key interest rates</h2>
+          <p class="sec-sub">Central bank policy rates over time</p>
+        </div>
+        <div class="time-range-row" id="kr-time-btns">
+          <button class="trb" data-range="1y">1Y</button>
+          <button class="trb" data-range="5y">5Y</button>
+          <button class="trb active" data-range="10y">10Y</button>
+          <button class="trb" data-range="all">All</button>
+        </div>
+      </div>
+
+      <div id="kr-toggles" class="country-toggles"></div>
+
+      <div class="chart-wrap">
+        <canvas id="kr-chart"></canvas>
+      </div>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         SECTION 5 — INTEREST RATE EVENTS
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <section id="sec-events" hidden>
+
+      <div class="sec-header">
+        <div>
+          <h2 class="sec-title">Interest rate events</h2>
+          <p class="sec-sub">Upcoming central bank decisions &amp; speeches</p>
+        </div>
+      </div>
+
+      <div id="events-grid" class="events-grid">
+        <div class="placeholder">Loading events…</div>
+      </div>
+
+    </section>
 
   </main>
 

@@ -113,7 +113,14 @@ async function handleUpload(body) {
     'proof-of-residence': '03_Proof_of_Residence',
     'company-documents': '04_Company_Documents',
     'source-of-funds': '05_Source_of_Funds',
-    'additional-documents': '06_Additional'
+    'additional-documents': '06_Additional',
+    // PEP-specific document types
+    'representative-documents': '02_Representative_Authority',
+    'primary-id': '03_Primary_Identification',
+    'secondary-id': '04_Secondary_Identification',
+    'proof-of-address': '05_Proof_of_Address',
+    'source-of-wealth': '06_Source_of_Wealth',
+    'trust-documents': '07_Trust_Documents'
   };
   const prefix = docLabels[docType] || docType;
   const safeName = `${prefix}_${sanitizeFilename(fileName)}`;

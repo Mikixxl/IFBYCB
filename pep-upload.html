@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PEP Document Upload — International Finance Bank LTD</title>
+  <link rel="stylesheet" href="upload-styles.css"/>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-area">
+        <img src="ifb-logo.svg" alt="IFB Logo" class="header-logo"/>
+        <span class="logo-subtitle">International Finance Bank LTD</span>
+      </div>
+      <div class="header-badge">PEP Upload Portal</div>
+    </div>
+  </header>
+
+  <!-- Client Identification Gate -->
+  <section id="access-gate" class="card access-card">
+    <img src="ifb-seal.svg" alt="IFB Seal" class="gate-logo"/>
+    <h1>PEP Document Upload</h1>
+    <p>Secure document submission for Politically Exposed Persons. Please enter your details below to begin uploading your enhanced due diligence documents.</p>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-name">Full Name <span class="required">*</span></label>
+      <input type="text" id="gate-name" placeholder="John Doe" autocomplete="name"/>
+    </div>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-company">Company / Entity Name</label>
+      <input type="text" id="gate-company" placeholder="Company Ltd." autocomplete="organization"/>
+    </div>
+    <div class="form-group" style="text-align:left;">
+      <label for="gate-email">Email Address <span class="required">*</span></label>
+      <input type="email" id="gate-email" placeholder="john@example.com" autocomplete="email"/>
+    </div>
+    <button id="btn-access" class="btn btn-primary btn-large">Continue</button>
+    <p id="access-error" class="error-text" hidden></p>
+  </section>
+
+  <!-- Main Upload Form (hidden until access granted) -->
+  <main id="upload-main" hidden>
+    <section class="card intro-card">
+      <h1>PEP Onboarding — Document Submission</h1>
+      <p>As part of our enhanced due diligence process for Politically Exposed Persons, please upload the required compliance documents below. Authorised representatives (trustees, family members, personal assistants, legal counsel) may submit documentation on behalf of the client.</p>
+      <div class="info-box">
+        <strong>Accepted formats:</strong> PDF, JPG, PNG &nbsp;|&nbsp;
+        <strong>Max file size:</strong> 10 MB per file
+      </div>
+    </section>
+
+    <!-- 1. Client Information (pre-filled from gate) -->
+    <section class="card">
+      <h2><span class="section-num">1</span>. Your Information</h2>
+      <div class="client-summary" id="client-summary"></div>
+      <input type="hidden" id="client-name"/>
+      <input type="hidden" id="client-email"/>
+      <input type="hidden" id="client-company"/>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-phone">Phone Number</label>
+          <input type="tel" id="client-phone" placeholder="+49 123 456 7890"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="pep-category">PEP Category <span class="required">*</span></label>
+          <select id="pep-category" class="form-select">
+            <option value="">— Select —</option>
+            <option value="current-pep">Current PEP (holding or recently held a prominent public function)</option>
+            <option value="former-pep">Former PEP</option>
+            <option value="family-member">Family Member of a PEP</option>
+            <option value="close-associate">Close Associate of a PEP</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="pep-position">Political Position / Role</label>
+          <input type="text" id="pep-position" placeholder="e.g. Member of Parliament, Minister, Ambassador..."/>
+        </div>
+        <div class="form-group">
+          <label for="pep-country">Country of Political Exposure</label>
+          <input type="text" id="pep-country" placeholder="e.g. Germany, United Kingdom..."/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="is-company"/>
+          This account is being opened for a <strong>company / entity</strong>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="is-representative"/>
+          I am an <strong>authorised representative</strong> submitting on behalf of the PEP
+        </label>
+      </div>
+    </section>
+
+    <!-- 2. Account Opening Form -->
+    <section class="card">
+      <h2><span class="section-num">2</span>. Account Opening Form</h2>
+      <p>Download the Account Opening Form, fill it with your data, sign on each page, and upload the completed form below.</p>
+      <a href="https://www.if-bank.com/account-opening-form/" target="_blank" rel="noopener" class="download-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Account Opening Form
+      </a>
+      <div class="upload-zone" data-doc="account-opening-form">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your signed form here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 3. Authorised Representative Documents (conditional) -->
+    <section class="card" id="representative-docs-section" hidden>
+      <h2><span class="section-num">3</span>. Authorised Representative Documents</h2>
+      <p>As you are submitting on behalf of the PEP, please provide documentation establishing your authority. Acceptable forms include:</p>
+      <ul class="doc-list">
+        <li>Power of Attorney</li>
+        <li>Trustee Appointment Letters</li>
+        <li>Board Resolutions or Corporate Mandates</li>
+        <li>Legal Mandates</li>
+      </ul>
+      <div class="upload-zone" data-doc="representative-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your representative authority documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 4. Primary Identification -->
+    <section class="card">
+      <h2><span class="section-num" id="num-primary-id">3</span>. Primary Identification <span class="required">*</span></h2>
+      <p>Please upload <strong>certified copies</strong> of one or more of the following:</p>
+      <ul class="doc-list">
+        <li>Valid Passport</li>
+        <li>National ID Card</li>
+      </ul>
+      <div class="upload-zone" data-doc="primary-id">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your passport or national ID here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 5. Secondary Identification -->
+    <section class="card">
+      <h2><span class="section-num" id="num-secondary-id">4</span>. Secondary Identification</h2>
+      <p>If available, please also provide:</p>
+      <ul class="doc-list">
+        <li>Driver's Licence</li>
+        <li>Official Government-issued Identification Card</li>
+      </ul>
+      <div class="upload-zone" data-doc="secondary-id">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your secondary ID here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB. Optional — but recommended.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 6. Proof of Address -->
+    <section class="card">
+      <h2><span class="section-num" id="num-proof-of-address">5</span>. Proof of Address <span class="required">*</span></h2>
+      <p>Please upload a document confirming your current residential address, <strong>dated within the last 3 months</strong>:</p>
+      <ul class="doc-list">
+        <li>Utility Bill (electricity, gas, water, telephone)</li>
+        <li>Bank Statement</li>
+        <li>Government-issued Letter or Tax Notice</li>
+      </ul>
+      <div class="upload-zone" data-doc="proof-of-address">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your proof of address here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 7. Source of Wealth & Funds -->
+    <section class="card">
+      <h2><span class="section-num" id="num-source-of-wealth">6</span>. Source of Wealth &amp; Funds <span class="required">*</span></h2>
+      <p>Please provide documentation verifying the origin of your wealth and the source of funds for the account. Acceptable documents include:</p>
+      <ul class="doc-list">
+        <li>Employment contracts and payslips</li>
+        <li>Sale agreements for property, shares, or business interests</li>
+        <li>Inheritance documentation or succession certificates</li>
+        <li>Audited financial statements</li>
+      </ul>
+      <div class="upload-zone" data-doc="source-of-wealth">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your source of wealth documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 8. Trust & Beneficial Ownership Documents (conditional) -->
+    <section class="card" id="trust-docs-section" hidden>
+      <h2><span class="section-num" id="num-trust-docs">7</span>. Trust &amp; Beneficial Ownership Documents</h2>
+      <p>If the account involves a trust structure, please provide:</p>
+      <ul class="doc-list">
+        <li>Trust Deed or Trust Instrument</li>
+        <li>Trustee Identity Verification (passport / ID of all trustees)</li>
+        <li>Proof of Source of Wealth within the Trust</li>
+        <li>Beneficial Ownership Declaration</li>
+      </ul>
+      <div class="upload-zone" data-doc="trust-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your trust documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 9. Company / Entity Documents (conditional) -->
+    <section class="card" id="company-docs-section" hidden>
+      <h2><span class="section-num" id="num-company-docs">7</span>. Company / Entity Documents</h2>
+      <p>Since this account is for a company or entity, please upload:</p>
+      <ul class="doc-list">
+        <li>Certificate of Incorporation / Company Registration</li>
+        <li>Memorandum &amp; Articles of Association</li>
+        <li>Register of Directors and Shareholders</li>
+        <li>Beneficial Ownership Declaration</li>
+        <li>Board Resolution authorising account opening</li>
+      </ul>
+      <div class="upload-zone" data-doc="company-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> your company documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB per file. You may upload multiple files.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- 10. Additional Information -->
+    <section class="card">
+      <h2><span class="section-num" id="num-additional">7</span>. Additional Information</h2>
+      <p>Please describe the intended use of the account, the anticipated funding channels, and upload any additional supporting documents.</p>
+      <div class="form-group">
+        <label for="additional-notes">Account Purpose / Notes</label>
+        <textarea id="additional-notes" rows="4" placeholder="Please describe the intended use of your account, anticipated transaction volumes, and preferred funding channels (SWIFT, RTGS, RTP, crypto-transfers, card channels)..."></textarea>
+      </div>
+      <div class="upload-zone" data-doc="additional-documents">
+        <div class="upload-zone-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Drag & drop</strong> additional documents here, or <span class="browse-link">browse files</span></p>
+          <small>PDF, JPG, PNG — max 10 MB. Optional.</small>
+        </div>
+        <input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden/>
+        <div class="file-preview" hidden></div>
+      </div>
+    </section>
+
+    <!-- Submit -->
+    <section class="card submit-card">
+      <div class="legal-text">
+        <label>
+          <input type="checkbox" id="consent-check"/>
+          I confirm that all documents provided are authentic and accurate. I consent to the processing of my personal data in accordance with applicable data protection regulations for the purpose of enhanced due diligence, account opening, and ongoing compliance review as required for Politically Exposed Persons.
+        </label>
+      </div>
+      <button id="btn-submit" class="btn btn-primary btn-large" disabled>Submit Documents</button>
+      <div id="upload-progress" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <p id="progress-text">Uploading documents...</p>
+      </div>
+      <p id="submit-error" class="error-text" hidden></p>
+    </section>
+
+    <!-- Success State -->
+    <section id="success-state" class="card success-card" hidden>
+      <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <h2>Documents Submitted Successfully</h2>
+      <p>Thank you for submitting your enhanced due diligence documents. Our compliance team will conduct a thorough review and you will receive a confirmation email shortly.</p>
+      <p>If you have any questions, please contact us at:</p>
+      <div class="contact-info">
+        <a href="mailto:legal@infiba.com">legal@infiba.com</a> &nbsp;|&nbsp;
+        <a href="mailto:legal@bafiin.com">legal@bafiin.com</a> &nbsp;|&nbsp;
+        <a href="mailto:admin@intfiba.com">admin@intfiba.com</a>
+      </div>
+      <p id="submission-ref"></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>International Finance Bank LTD &mdash; PEP Secure Document Portal</p>
+    <p><small>All transmissions are encrypted. Documents are stored securely in compliance with enhanced due diligence requirements and data protection regulations.</small></p>
+  </footer>
+
+  <script src="pep-upload-app.js"></script>
+</body>
+</html>

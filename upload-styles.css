@@ -358,6 +358,52 @@ main { padding: 24px 16px 40px; }
 .site-footer p { margin-bottom: 4px; }
 .site-footer small { font-size: 12px; }
 
+/* === PEP-specific: Select, Doc lists, Download link === */
+.form-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text);
+  transition: border-color 0.2s;
+  appearance: auto;
+}
+.form-select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201,168,76,0.15);
+}
+.doc-list {
+  margin: 0 0 16px 20px;
+  color: var(--text-light);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.doc-list li { padding-left: 4px; }
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 18px;
+  color: var(--navy);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+.download-link:hover {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.06);
+}
+.download-link svg { flex-shrink: 0; }
+
 /* === Responsive === */
 @media (max-width: 640px) {
   .header-inner { flex-direction: column; height: auto; padding: 16px 0; gap: 8px; }

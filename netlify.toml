@@ -34,7 +34,18 @@
   to = "/upload.html"
   status = 200
 
-# All other paths → upload portal
+# PEP upload portal
+[[redirects]]
+  from = "/pep"
+  to = "/pep-upload.html"
+  status = 200
+
+[[redirects]]
+  from = "/pep-upload"
+  to = "/pep-upload.html"
+  status = 200
+
+# All other paths → standard upload portal
 [[redirects]]
   from = "/*"
   to = "/upload.html"

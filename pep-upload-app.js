@@ -1,4 +1,4 @@
-/* === IFB Upload Portal — Frontend Logic === */
+/* === IFB PEP Upload Portal — Frontend Logic === */
 (function () {
   'use strict';
 
@@ -7,8 +7,7 @@
   const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
 
   // ===== BACKEND CONFIGURATION =====
-  // Set your Google Apps Script Web App URL here after deployment.
-  // Leave empty to fall back to the Netlify function backend.
+  // Same backend as the standard upload portal
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbz5f_4yNT6EhUglvUTpfXh615VnPmQTNbqyuqpzA0nC28sgtCPYxaXD_PwcsOHCCCG3/exec';
   const NETLIFY_URL = '/.netlify/functions/upload-handler';
   const API_URL = GAS_URL || NETLIFY_URL;
@@ -26,26 +25,27 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
 
-  const elGate       = $('#access-gate');
-  const elMain       = $('#upload-main');
-  const elGateName   = $('#gate-name');
-  const elGateCompany= $('#gate-company');
-  const elGateEmail  = $('#gate-email');
-  const elAccessBtn  = $('#btn-access');
-  const elAccessErr  = $('#access-error');
-  const elSubmitBtn  = $('#btn-submit');
-  const elConsent    = $('#consent-check');
-  const elIsCompany  = $('#is-company');
-  const elCompanySec = $('#company-docs-section');
-  const elProgress   = $('#upload-progress');
-  const elFill       = $('#progress-fill');
-  const elProgressTx = $('#progress-text');
-  const elSubmitErr  = $('#submit-error');
-  const elSuccess    = $('#success-state');
-  const elSofHeading = $('#sof-heading');
-  const elAddHeading = $('#additional-heading');
+  const elGate            = $('#access-gate');
+  const elMain            = $('#upload-main');
+  const elGateName        = $('#gate-name');
+  const elGateCompany     = $('#gate-company');
+  const elGateEmail       = $('#gate-email');
+  const elAccessBtn       = $('#btn-access');
+  const elAccessErr       = $('#access-error');
+  const elSubmitBtn       = $('#btn-submit');
+  const elConsent         = $('#consent-check');
+  const elIsCompany       = $('#is-company');
+  const elIsRepresentative= $('#is-representative');
+  const elCompanySec      = $('#company-docs-section');
+  const elRepSec          = $('#representative-docs-section');
+  const elTrustSec        = $('#trust-docs-section');
+  const elProgress        = $('#upload-progress');
+  const elFill            = $('#progress-fill');
+  const elProgressTx      = $('#progress-text');
+  const elSubmitErr       = $('#submit-error');
+  const elSuccess         = $('#success-state');
 
-  // --- Access Gate (Name / Company / Email) ---
+  // --- Access Gate ---
   elAccessBtn.addEventListener('click', verifyClient);
   elGateEmail.addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyClient(); });
 
@@ -62,12 +62,10 @@
       return;
     }
 
-    // Pass values into the main form hidden fields
     $('#client-name').value = name;
     $('#client-email').value = email;
     $('#client-company').value = company;
 
-    // Show summary in the main form
     const summary = $('#client-summary');
     summary.innerHTML =
       '<div class="summary-row"><strong>' + escHtml(name) + '</strong></div>' +
@@ -79,14 +77,42 @@
     elMain.hidden = false;
   }
 
-  // --- Company toggle ---
-  elIsCompany.addEventListener('change', () => {
-    const isCompany = elIsCompany.checked;
-    elCompanySec.hidden = !isCompany;
-    // Re-number headings dynamically
-    elSofHeading.textContent = isCompany ? '5. Source of Funds Declaration' : '4. Source of Funds Declaration';
-    elAddHeading.textContent = isCompany ? '6. Additional Information' : '5. Additional Information';
+  // --- Conditional section toggles ---
+  elIsCompany.addEventListener('change', renumberSections);
+  elIsRepresentative.addEventListener('change', () => {
+    elRepSec.hidden = !elIsRepresentative.checked;
+    renumberSections();
   });
+
+  // Trust docs checkbox — show if company or representative is checked
+  // (trust structures are common in PEP setups)
+  function updateTrustVisibility() {
+    // Trust section is always visible for PEPs — they can optionally upload
+    elTrustSec.hidden = false;
+  }
+
+  // --- Dynamic section numbering ---
+  function renumberSections() {
+    elCompanySec.hidden = !elIsCompany.checked;
+    elRepSec.hidden = !elIsRepresentative.checked;
+    updateTrustVisibility();
+
+    // Renumber all visible section headings
+    let num = 1; // Section 1 is always "Your Information"
+    const allSections = elMain.querySelectorAll('section.card:not(#success-state):not(.intro-card):not(.submit-card)');
+    allSections.forEach((section) => {
+      if (section.hidden) return;
+      const numSpan = section.querySelector('.section-num');
+      if (numSpan) {
+        numSpan.textContent = num;
+      }
+      num++;
+    });
+  }
+
+  // Initialize: show trust section by default for PEPs
+  updateTrustVisibility();
+  renumberSections();
 
   // --- Consent toggle ---
   elConsent.addEventListener('change', updateSubmitState);
@@ -177,7 +203,6 @@
         </div>
       `).join('');
 
-      // Remove handlers
       preview.querySelectorAll('.file-remove').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -194,7 +219,6 @@
   elSubmitBtn.addEventListener('click', submitDocuments);
 
   async function submitDocuments() {
-    // Validate client info
     const clientName = $('#client-name').value.trim();
     const clientEmail = $('#client-email').value.trim();
     if (!clientName || !clientEmail) {
@@ -206,22 +230,36 @@
       return;
     }
 
+    // PEP category is required
+    const pepCategory = $('#pep-category').value;
+    if (!pepCategory) {
+      showError(elSubmitErr, 'Please select your PEP category.');
+      return;
+    }
+
     // Validate required files
-    const required = ['account-opening-form', 'passport', 'proof-of-residence', 'source-of-funds'];
+    const required = ['account-opening-form', 'primary-id', 'proof-of-address', 'source-of-wealth'];
     const missing = required.filter((d) => !state.files[d] || !state.files[d].length);
     if (missing.length) {
       const labels = {
         'account-opening-form': 'Account Opening Form',
-        'passport': 'Passport Copy',
-        'proof-of-residence': 'Proof of Residence',
-        'source-of-funds': 'Source of Funds Declaration'
+        'primary-id': 'Primary Identification (Passport / National ID)',
+        'proof-of-address': 'Proof of Address',
+        'source-of-wealth': 'Source of Wealth & Funds'
       };
       showError(elSubmitErr, 'Please upload: ' + missing.map((m) => labels[m]).join(', '));
       return;
     }
 
+    // Conditional required: representative docs
+    if (elIsRepresentative.checked && (!state.files['representative-documents'] || !state.files['representative-documents'].length)) {
+      showError(elSubmitErr, 'Please upload your Authorised Representative Documents (Power of Attorney, etc.).');
+      return;
+    }
+
+    // Conditional required: company docs
     if (elIsCompany.checked && (!state.files['company-documents'] || !state.files['company-documents'].length)) {
-      showError(elSubmitErr, 'Please upload your Company Documents.');
+      showError(elSubmitErr, 'Please upload your Company / Entity Documents.');
       return;
     }
 
@@ -235,13 +273,29 @@
     try {
       // Step 1: Init session
       elProgressTx.textContent = 'Initializing secure session...';
+      const pepPosition = $('#pep-position').value.trim();
+      const pepCountry = $('#pep-country').value.trim();
+      const pepCategoryLabel = $('#pep-category').selectedOptions[0].text;
+      const notes = $('#additional-notes').value.trim();
+
+      // Build enhanced notes with PEP-specific info
+      const pepNotes = [
+        '[PEP SUBMISSION]',
+        'PEP Category: ' + pepCategoryLabel,
+        pepPosition ? 'Political Position: ' + pepPosition : '',
+        pepCountry ? 'Country of Exposure: ' + pepCountry : '',
+        elIsRepresentative.checked ? 'Submitted by: Authorised Representative' : 'Submitted by: PEP directly',
+        '',
+        notes || ''
+      ].filter(Boolean).join('\n');
+
       const initRes = await apiCall('init', {
         clientName,
         clientEmail,
         clientCompany: $('#client-company').value.trim(),
         clientPhone: $('#client-phone').value.trim(),
         isCompany: elIsCompany.checked,
-        notes: $('#additional-notes').value.trim()
+        notes: pepNotes
       });
       state.sessionId = initRes.sessionId;
       state.folderId = initRes.folderId;
@@ -260,7 +314,6 @@
         elFill.style.width = pct + '%';
         elProgressTx.textContent = `Uploading ${file.name} (${i + 1}/${allFiles.length})...`;
 
-        // Update file status in UI
         const statusEl = document.querySelector(`.file-status[data-doc="${docType}"][data-fidx="${idx}"]`);
         if (statusEl) { statusEl.textContent = 'Uploading...'; statusEl.className = 'file-status uploading'; }
 
@@ -289,13 +342,12 @@
         clientCompany: $('#client-company').value.trim(),
         clientPhone: $('#client-phone').value.trim(),
         isCompany: elIsCompany.checked,
-        notes: $('#additional-notes').value.trim()
+        notes: pepNotes
       });
 
       elFill.style.width = '100%';
       elProgressTx.textContent = 'Complete!';
 
-      // Show success
       setTimeout(() => {
         elMain.querySelectorAll('.card:not(#success-state)').forEach((c) => c.hidden = true);
         elProgress.hidden = true;
@@ -312,11 +364,9 @@
     }
   }
 
-  // --- Helpers ---
+  // --- API Helpers ---
   async function apiCall(action, data) {
     const payload = JSON.stringify({ action, ...data });
-
-    // Use Google Apps Script directly — no fallback to avoid double submissions
     if (GAS_URL) {
       return await gasCall(payload);
     }
@@ -365,6 +415,7 @@
     return json;
   }
 
+  // --- Utility Functions ---
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();

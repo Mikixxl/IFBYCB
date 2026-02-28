@@ -191,7 +191,7 @@ async function fetchECBRate() {
 // ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
 // No key required. https://www.bankofcanada.ca/valet/docs/
 const BOC_TENORS = {
-  "3M":"BD.CDN.3MT.DQ.YLD", "6M":"BD.CDN.6MT.DQ.YLD",
+  "3M":"BD.CDN.3MO.DQ.YLD", "6M":"BD.CDN.6MO.DQ.YLD",
   "1Y":"BD.CDN.1YR.DQ.YLD", "2Y":"BD.CDN.2YR.DQ.YLD",
   "5Y":"BD.CDN.5YR.DQ.YLD", "7Y":"BD.CDN.7YR.DQ.YLD",
   "10Y":"BD.CDN.10YR.DQ.YLD","30Y":"BD.CDN.LONG.DQ.YLD",
@@ -253,7 +253,19 @@ async function fetchBoECurve() {
   const codes = Object.values(BOE_TENORS).join(",");
   const url   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp` +
                 `?csv.x=yes&Datefrom=01/Jan/${year}&SeriesCodes=${codes}&UsingCodes=Y&CSVF=TT`;
-  const text  = await getHtml(url);
+  // Use CSV-specific headers — getHtml sends Accept:text/html which triggers an HTML response
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":      UA,
+      "Accept":          "text/csv,text/plain,*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
+      "Cache-Control":   "no-cache",
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
   const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
   const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
   if (hIdx < 0) return null;

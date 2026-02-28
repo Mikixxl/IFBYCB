@@ -1,5 +1,5 @@
 [build]
-  command = "npm install"
+  command = "npm install && if [ \"$PEP_SITE\" = \"true\" ]; then printf '/ /pep-upload.html 200\\n/* /pep-upload.html 200\\n' > _redirects; fi"
   publish = "."
   functions = "netlify/functions"
 

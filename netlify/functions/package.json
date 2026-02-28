@@ -1,1 +1,9 @@
-
+{
+  "name": "bonds-functions",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "node-fetch": "^2.7.0"
+  }
+}

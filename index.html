@@ -3,43 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
+  <title>Global Bonds Market — Live 10Y Yields</title>
   <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+  <!-- ── Header ── -->
+  <header class="site-header">
+    <div class="header-brand">
+      <span class="brand-icon">📈</span>
+      <span class="brand-name">BondsMarket</span>
+      <span class="brand-tagline">Government Bond Yields</span>
+    </div>
+    <div class="header-meta">
+      <span id="last-update" class="last-update"></span>
+      <span id="countdown" class="countdown"></span>
+      <button id="refresh-btn" class="btn-refresh" title="Refresh data now">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <!-- ── Main ── -->
+  <main class="page">
+
+    <div class="page-hero">
+      <h1 class="page-title">Government Bonds</h1>
+      <p class="page-sub">10-Year sovereign bond yields across 35 countries — updates every 60 s</p>
+    </div>
+
+    <!-- Toolbar: region tabs + search -->
+    <div class="toolbar">
+      <div class="region-tabs" id="region-tabs" role="tablist">
+        <button class="tab active" data-region="All"                  role="tab">All</button>
+        <button class="tab"        data-region="Americas"             role="tab">Americas</button>
+        <button class="tab"        data-region="Europe"               role="tab">Europe</button>
+        <button class="tab"        data-region="Asia Pacific"         role="tab">Asia Pacific</button>
+        <button class="tab"        data-region="Africa &amp; Middle East" role="tab">Middle East &amp; Africa</button>
       </div>
-
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search" placeholder="Search country…" autocomplete="off" />
       </div>
+    </div>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
-      </div>
+    <!-- Data status bar -->
+    <div class="status-bar">
+      <span id="status-msg" class="status-msg"></span>
+      <span class="legend">
+        <span class="pill pill-up">▲ yield rising</span>
+        <span class="pill pill-dn">▼ yield falling</span>
+        <span class="pill pill-live">● live</span>
+        <span class="pill pill-demo">◌ demo</span>
+      </span>
+    </div>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
+    <!-- Bonds table -->
+    <div class="table-wrap">
+      <table id="bonds-table" aria-label="Government Bond Yields">
+        <thead>
+          <tr>
+            <th class="col-flag"></th>
+            <th class="col-name  sortable" data-col="name">Country <span class="si">↕</span></th>
+            <th class="col-yield sortable" data-col="yield10y">Yield&nbsp;% <span class="si">↕</span></th>
+            <th class="col-chg   sortable" data-col="change1d">1D&nbsp;chg <span class="si">↕</span></th>
+            <th class="col-chg   sortable" data-col="change1w">1W&nbsp;chg <span class="si">↕</span></th>
+            <th class="col-chg   sortable" data-col="change1m">1M&nbsp;chg <span class="si">↕</span></th>
+            <th class="col-chg   sortable" data-col="change6m">6M&nbsp;chg <span class="si">↕</span></th>
+            <th class="col-chg   sortable" data-col="change1y">1Y&nbsp;chg <span class="si">↕</span></th>
+            <th class="col-rtg   sortable" data-col="rating">Rating <span class="si">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="bonds-body">
+          <tr><td colspan="9" class="placeholder">Loading market data…</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
-  </div>
+    <div class="table-footer">
+      <span id="row-count"></span>
+      <span class="disclaimer">Data sourced from worldgovernmentbonds.com — for informational purposes only.</span>
+    </div>
+
+  </main>
+
   <script src="app.js"></script>
 </body>
 </html>

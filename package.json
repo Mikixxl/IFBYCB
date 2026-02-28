@@ -4,6 +4,11 @@
   "version": "1.0.0",
   "description": "Static HTML deployment for IFB SBY",
   "scripts": {
-    "build": "echo \"no build\""
+    "build": "npm install"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0",
+    "cheerio": "^1.0.0",
+    "node-fetch": "^2.7.0"
   }
 }

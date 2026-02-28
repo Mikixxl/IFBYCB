@@ -277,7 +277,7 @@ async function fetchBoECurve() {
   const tenors = {};
   for (const [tenor, code] of Object.entries(BOE_TENORS)) {
     const i = headers.indexOf(code);
-    if (i >= 0 && vals[i] && vals[i] !== "n/a" && vals[i] !== "") {
+    if (i >= 0 && vals[i] && vals[i] !== "n/a" && vals[i] !== "" && vals[i] !== "..") {
       const v = parseFloat(vals[i]);
       if (!isNaN(v)) tenors[tenor] = v;
     }

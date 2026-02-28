@@ -25,16 +25,30 @@ const fetch   = require("node-fetch");
 const cheerio = require("cheerio");
 const { getStore } = require("@netlify/blobs");
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-           "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+           "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 async function getHtml(url) {
   const res = await fetch(url, {
     headers: {
-      "User-Agent": UA, Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.google.com/",
+      "User-Agent":              UA,
+      "Accept":                  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      "Accept-Language":         "en-US,en;q=0.9",
+      "Accept-Encoding":         "gzip, deflate, br",
+      "Cache-Control":           "no-cache",
+      "Pragma":                  "no-cache",
+      "Referer":                 "https://www.google.com/",
+      "sec-ch-ua":               '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+      "sec-ch-ua-mobile":        "?0",
+      "sec-ch-ua-platform":      '"Windows"',
+      "sec-fetch-dest":          "document",
+      "sec-fetch-mode":          "navigate",
+      "sec-fetch-site":          "cross-site",
+      "sec-fetch-user":          "?1",
+      "upgrade-insecure-requests": "1",
     },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -58,6 +72,15 @@ const TENOR_LABEL = {
 
 async function scrapeWGBCurve(slug) {
   const html = await getHtml(`https://www.worldgovernmentbonds.com/country/${slug}/`);
+  // Detect Cloudflare JS challenge / bot-block pages
+  if (
+    html.includes("cf-browser-verification") ||
+    html.includes("Just a moment") ||
+    html.includes("Enable JavaScript and cookies to continue") ||
+    html.includes("Checking if the site connection is secure")
+  ) {
+    throw new Error("Cloudflare challenge page");
+  }
   const $ = cheerio.load(html);
   const tenors = {};
   $("table tbody tr").each((_, row) => {
@@ -76,7 +99,10 @@ async function scrapeWGBCurve(slug) {
 }
 
 async function scrapeWGB10Y(slug) {
-  const curve = await scrapeWGBCurve(slug).catch(() => null);
+  const curve = await scrapeWGBCurve(slug).catch(e => {
+    console.warn(`[fetch-bonds] WGB ${slug}: ${e.message}`);
+    return null;
+  });
   return curve?.["10Y"] ?? null;
 }
 
@@ -280,9 +306,10 @@ exports.handler = async () => {
   // ── 1. Bonds table (35 countries × 10Y) ──────────────────────────────────────
   console.log("[fetch-bonds] Bonds table…");
   const bonds = []; let liveCount = 0;
-  for (let i = 0; i < BONDS_COUNTRIES.length; i += 6) {
+  for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
+    if (i > 0) await sleep(800 + Math.floor(Math.random() * 600));
     const wave = await Promise.all(
-      BONDS_COUNTRIES.slice(i, i + 6).map(async c => {
+      BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const live = await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];

@@ -6,7 +6,13 @@
 //            fallback: WGB per-country scraping
 //   DE   → ECB SDMX API (no key, issuer: European Central Bank)
 //            fallback: WGB per-country scraping
-//   GB, FR, IT, CA, JP, CN → WGB per-country scraping
+//   GB  → Bank of England gilt par yields (no key needed)
+//            fallback: WGB per-country scraping
+//   CA  → Bank of Canada Valet API (no key needed)
+//            fallback: WGB per-country scraping
+//   JP  → Japan MoF JGB benchmark CSV (no key needed)
+//            fallback: WGB per-country scraping
+//   FR, IT, CN → WGB per-country scraping
 //
 // Central bank rates:
 //   US   → FRED (FEDFUNDS series, if key set)  fallback: WGB cb-rates page
@@ -180,6 +186,91 @@ async function fetchECBRate() {
     "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.DFR.LEV?lastNObservations=5&format=jsondata"
   );
   return parseEcbValue(json);
+}
+
+// ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
+// No key required. https://www.bankofcanada.ca/valet/docs/
+const BOC_TENORS = {
+  "3M":"BD.CDN.3MT.DQ.YLD", "6M":"BD.CDN.6MT.DQ.YLD",
+  "1Y":"BD.CDN.1YR.DQ.YLD", "2Y":"BD.CDN.2YR.DQ.YLD",
+  "5Y":"BD.CDN.5YR.DQ.YLD", "7Y":"BD.CDN.7YR.DQ.YLD",
+  "10Y":"BD.CDN.10YR.DQ.YLD","30Y":"BD.CDN.LONG.DQ.YLD",
+};
+
+async function fetchBoCCurve() {
+  const s = Object.values(BOC_TENORS).join(",");
+  const data = await getJson(
+    `https://www.bankofcanada.ca/valet/observations/${s}/json?recent=10&order_dir=desc`
+  );
+  // Iterate from most-recent; skip observations that have no data (weekends/holidays)
+  for (const obs of data.observations ?? []) {
+    const tenors = {};
+    for (const [tenor, series] of Object.entries(BOC_TENORS)) {
+      const v = obs[series]?.v;
+      if (v != null && v !== "" && !isNaN(parseFloat(v))) tenors[tenor] = parseFloat(v);
+    }
+    if (Object.keys(tenors).length >= 4) return tenors;
+  }
+  return null;
+}
+
+// ─── Japan Ministry of Finance JGB benchmark yields (CSV) ────────────────────
+// No key required. File updated each business day.
+// Headers: Date,1Y,2Y,3Y,4Y,5Y,6Y,7Y,8Y,9Y,10Y,15Y,20Y,25Y,30Y,40Y
+// Date format: YYYY/M/D
+async function fetchMoFJapanCurve() {
+  const text = await getHtml(
+    "https://www.mof.go.jp/english/jgbs/reference/interest_rate/jgbcme.csv"
+  );
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  const hIdx  = lines.findIndex(l => /Date/i.test(l) && /1Y/i.test(l));
+  if (hIdx < 0) return null;
+  const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
+  const dataRows = lines.slice(hIdx + 1).filter(l => /^\d{4}/.test(l.trim()));
+  const latest   = dataRows[dataRows.length - 1];
+  if (!latest) return null;
+  const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
+  const want = { "1Y":1,"2Y":1,"5Y":1,"7Y":1,"10Y":1,"20Y":1,"30Y":1 };
+  const tenors = {};
+  headers.forEach((h, i) => {
+    if (want[h] && vals[i] && vals[i] !== "-" && vals[i] !== "") {
+      const v = parseFloat(vals[i]);
+      if (!isNaN(v)) tenors[h] = v;
+    }
+  });
+  return Object.keys(tenors).length >= 4 ? tenors : null;
+}
+
+// ─── Bank of England gilt nominal par yields ─────────────────────────────────
+// No key required. https://www.bankofengland.co.uk/boeapps/database/
+const BOE_TENORS = {
+  "1Y":"IUDMNPY","2Y":"IUDMNY2","5Y":"IUDMNY5",
+  "7Y":"IUDMNY7","10Y":"IUDMNY10","20Y":"IUDMNY20",
+};
+
+async function fetchBoECurve() {
+  const year  = new Date().getFullYear();
+  const codes = Object.values(BOE_TENORS).join(",");
+  const url   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp` +
+                `?csv.x=yes&Datefrom=01/Jan/${year}&SeriesCodes=${codes}&UsingCodes=Y&CSVF=TT`;
+  const text  = await getHtml(url);
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
+  if (hIdx < 0) return null;
+  const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
+  const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
+  const latest   = dataRows[dataRows.length - 1];
+  if (!latest) return null;
+  const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
+  const tenors = {};
+  for (const [tenor, code] of Object.entries(BOE_TENORS)) {
+    const i = headers.indexOf(code);
+    if (i >= 0 && vals[i] && vals[i] !== "n/a" && vals[i] !== "") {
+      const v = parseFloat(vals[i]);
+      if (!isNaN(v)) tenors[tenor] = v;
+    }
+  }
+  return Object.keys(tenors).length >= 4 ? tenors : null;
 }
 
 // ─── WGB central-bank-rates page ─────────────────────────────────────────────
@@ -362,14 +453,37 @@ exports.handler = async () => {
     else console.warn("[fetch-bonds] DE: all sources failed — excluded");
   }
 
-  // GB, FR, IT, CA, JP, CN: WGB only
-  // Japan data is freely published by MoF Japan, aggregated by WGB.
+  // GB: Bank of England preferred → WGB fallback
+  const boeCurve = await fetchBoECurve().catch(e => { console.warn("BoE:", e.message); return null; });
+  if (boeCurve) { curves.GB = boeCurve; console.log("[fetch-bonds] GB: BoE ✓"); }
+  else {
+    const wgb = await scrapeWGBCurve("united-kingdom").catch(() => null);
+    if (wgb) { curves.GB = wgb; console.log("[fetch-bonds] GB: WGB fallback ✓"); }
+    else console.warn("[fetch-bonds] GB: all sources failed — excluded");
+  }
+
+  // CA: Bank of Canada preferred → WGB fallback
+  const bocCurve = await fetchBoCCurve().catch(e => { console.warn("BoC:", e.message); return null; });
+  if (bocCurve) { curves.CA = bocCurve; console.log("[fetch-bonds] CA: BoC ✓"); }
+  else {
+    const wgb = await scrapeWGBCurve("canada").catch(() => null);
+    if (wgb) { curves.CA = wgb; console.log("[fetch-bonds] CA: WGB fallback ✓"); }
+    else console.warn("[fetch-bonds] CA: all sources failed — excluded");
+  }
+
+  // JP: MoF Japan preferred → WGB fallback
+  const mofCurve = await fetchMoFJapanCurve().catch(e => { console.warn("MoF:", e.message); return null; });
+  if (mofCurve) { curves.JP = mofCurve; console.log("[fetch-bonds] JP: MoF ✓"); }
+  else {
+    const wgb = await scrapeWGBCurve("japan").catch(() => null);
+    if (wgb) { curves.JP = wgb; console.log("[fetch-bonds] JP: WGB fallback ✓"); }
+    else console.warn("[fetch-bonds] JP: all sources failed — excluded");
+  }
+
+  // FR, IT, CN: WGB only (no free official API available)
   await Promise.all([
-    { code:"GB", slug:"united-kingdom" },
     { code:"FR", slug:"france" },
     { code:"IT", slug:"italy" },
-    { code:"CA", slug:"canada" },
-    { code:"JP", slug:"japan" },
     { code:"CN", slug:"china" },
   ].map(async ({ code, slug }) => {
     const c = await scrapeWGBCurve(slug).catch(() => null);

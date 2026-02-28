@@ -266,7 +266,14 @@ const DEMO_CHG = {
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 exports.handler = async () => {
-  const store    = getStore("bonds-cache");
+  // @netlify/blobs v8 needs NETLIFY_BLOBS_CONTEXT (auto-injected for regular
+  // functions) OR explicit siteID + token.  Scheduled functions sometimes don't
+  // receive the auto-injected context, so we always supply credentials explicitly.
+  const store = getStore({
+    name:   "bonds-cache",
+    siteID: process.env.NETLIFY_SITE_ID || process.env.SITE_ID,
+    token:  process.env.NETLIFY_AUTH_TOKEN,
+  });
   const FRED_KEY = process.env.FRED_API_KEY || "";
   const asOf     = todayISO();
 

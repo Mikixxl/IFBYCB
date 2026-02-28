@@ -10,7 +10,11 @@ const { getStore } = require("@netlify/blobs");
 
 exports.handler = async (event, context) => {
   try {
-    const store = getStore({ name: "bonds-cache", consistency: "strong" });
+    const store = getStore({
+      name:   "bonds-cache",
+      siteID: process.env.NETLIFY_SITE_ID || process.env.SITE_ID,
+      token:  process.env.NETLIFY_AUTH_TOKEN,
+    });
     const data = await store.get("yield-curves", { type: "json" });
 
     if (!data || !data.countries || data.countries.length === 0) {

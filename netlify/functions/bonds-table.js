@@ -50,7 +50,11 @@ const DEMO_BONDS = [
 exports.handler = async () => {
   // Try to serve from the Netlify Blobs cache written by fetch-bonds.js
   try {
-    const store = getStore("bonds-cache");
+    const store = getStore({
+      name:   "bonds-cache",
+      siteID: process.env.NETLIFY_SITE_ID || process.env.SITE_ID,
+      token:  process.env.NETLIFY_AUTH_TOKEN,
+    });
     const cached = await store.get("latest", { type: "json" });
 
     if (cached && cached.bonds && cached.bonds.length > 0) {

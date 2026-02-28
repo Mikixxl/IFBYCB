@@ -107,7 +107,11 @@ exports.handler = async (event, context) => {
 
   // Try to read the current live rates from Blobs and append if changed
   try {
-    const store = getStore({ name: "bonds-cache", consistency: "strong" });
+    const store = getStore({
+      name:   "bonds-cache",
+      siteID: process.env.NETLIFY_SITE_ID || process.env.SITE_ID,
+      token:  process.env.NETLIFY_AUTH_TOKEN,
+    });
     const liveData = await store.get("cb-rates", { type: "json" });
 
     if (liveData && liveData.rates && liveData.asOf) {

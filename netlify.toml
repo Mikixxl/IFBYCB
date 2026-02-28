@@ -7,6 +7,11 @@
   [headers.values]
   Cache-Control = "public, max-age=0, must-revalidate"
 
+# Daily import: scrape worldgovernmentbonds.com and write to Netlify Blobs.
+# Runs at 06:00 UTC every day.
+[functions.fetch-bonds]
+  schedule = "0 6 * * *"
+
 # API → Netlify Functions (must come BEFORE the SPA catch-all)
 [[redirects]]
   from   = "/api/*"
@@ -14,7 +19,7 @@
   status = 200
   force  = true
 
-# SPA fallback (catches all other routes)
+# SPA fallback
 [[redirects]]
   from   = "/*"
   to     = "/index.html"

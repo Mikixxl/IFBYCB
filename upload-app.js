@@ -276,7 +276,11 @@
         sessionId: state.sessionId,
         folderId: state.folderId,
         clientName,
-        clientEmail
+        clientEmail,
+        clientCompany: $('#client-company').value.trim(),
+        clientPhone: $('#client-phone').value.trim(),
+        isCompany: elIsCompany.checked,
+        notes: $('#additional-notes').value.trim()
       });
 
       elFill.style.width = '100%';

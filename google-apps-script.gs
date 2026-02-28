@@ -167,8 +167,36 @@ function handleComplete(data) {
   var folderId = data.folderId;
   var clientName = data.clientName;
   var clientEmail = data.clientEmail;
+  var clientCompany = data.clientCompany || '';
+  var clientPhone = data.clientPhone || '';
+  var isCompany = data.isCompany || false;
+  var notes = data.notes || '';
+
+  // Try to get extra info from stored session data (fallback)
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var sessionJson = props.getProperty(sessionId);
+    if (sessionJson) {
+      var session = JSON.parse(sessionJson);
+      if (!clientCompany) clientCompany = session.clientCompany || '';
+      if (!clientPhone) clientPhone = session.clientPhone || '';
+      if (!notes) notes = session.notes || '';
+      if (!isCompany) isCompany = session.isCompany || false;
+    }
+  } catch (e) { /* ignore */ }
 
   var folderLink = 'https://drive.google.com/drive/folders/' + folderId;
+
+  // Create and upload client info summary text file
+  try {
+    var infoText = buildClientInfoText(sessionId, clientName, clientEmail, clientCompany, clientPhone, isCompany, notes);
+    var blob = Utilities.newBlob(infoText, 'text/plain', '00_Client_Information.txt');
+    var folder = DriveApp.getFolderById(folderId);
+    folder.createFile(blob);
+    Logger.log('[INFO FILE] Client info text file created in folder ' + folderId);
+  } catch (infoErr) {
+    Logger.log('Failed to create client info file: ' + infoErr.message);
+  }
 
   // Build notification email
   var htmlBody =
@@ -231,4 +259,31 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function buildClientInfoText(sessionId, clientName, clientEmail, clientCompany, clientPhone, isCompany, notes) {
+  var lines = [
+    '============================================',
+    '  CLIENT INFORMATION SUMMARY',
+    '============================================',
+    '',
+    'Reference:      ' + (sessionId || 'N/A'),
+    'Date:           ' + formatDate(new Date()),
+    '',
+    '--- Contact Details ---',
+    'Full Name:      ' + (clientName || 'N/A'),
+    'Email:          ' + (clientEmail || 'N/A'),
+    'Phone:          ' + (clientPhone || 'Not provided'),
+    'Company:        ' + (clientCompany || 'Not provided'),
+    'Account Type:   ' + (isCompany ? 'Company / Entity' : 'Individual'),
+    '',
+    '--- Account Purpose / Notes ---',
+    notes || 'No additional notes provided.',
+    '',
+    '============================================',
+    '  Generated: ' + new Date().toISOString(),
+    '============================================',
+    ''
+  ];
+  return lines.join('\n');
 }

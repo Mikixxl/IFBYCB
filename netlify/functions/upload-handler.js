@@ -143,22 +143,51 @@ async function handleUpload(body) {
 // ACTION: Complete submission
 // ========================
 async function handleComplete(body) {
-  const { sessionId, folderId, clientName, clientEmail } = body;
+  const { sessionId, folderId, clientName, clientEmail, clientCompany, clientPhone, isCompany, notes } = body;
 
   let folderLink = null;
 
+  // Generate client info summary text file
+  const infoContent = buildClientInfoText({
+    sessionId, clientName, clientEmail, clientCompany, clientPhone, isCompany, notes
+  });
+
   if (googleConfigured()) {
-    // Make folder viewable via link and get URL
+    const token = await getGoogleAccessToken();
+    folderLink = `https://drive.google.com/drive/folders/${folderId}`;
+
+    // Upload client info text file to the folder
     try {
-      const token = await getGoogleAccessToken();
-      folderLink = `https://drive.google.com/drive/folders/${folderId}`;
-      // Set sharing permission so internal team can access
+      const infoBuffer = Buffer.from(infoContent, 'utf-8');
+      await uploadToGoogle(token, folderId, '00_Client_Information.txt', 'text/plain', infoBuffer);
+    } catch (e) {
+      console.error('Failed to upload client info file:', e.message);
+    }
+
+    // Set sharing permission so internal team can access
+    try {
       await setGoogleFolderSharing(token, folderId);
     } catch (e) {
       console.error('Failed to set sharing:', e.message);
     }
   } else if (onedriveConfigured()) {
     folderLink = folderId; // OneDrive folder path
+    // Upload client info text file to OneDrive
+    try {
+      const infoBuffer = Buffer.from(infoContent, 'utf-8');
+      await uploadToOneDrive(folderId, '00_Client_Information.txt', 'text/plain', infoBuffer);
+    } catch (e) {
+      console.error('Failed to upload client info file to OneDrive:', e.message);
+    }
+  } else {
+    // Fallback: store in Netlify Blobs
+    try {
+      const { getStore } = require('@netlify/blobs');
+      const store = getStore('client-uploads');
+      await store.set(`${folderId}/00_Client_Information.txt`, infoContent);
+    } catch (e) {
+      console.log('[FALLBACK] Netlify Blobs not available for client info file.');
+    }
   }
 
   // Send notification email
@@ -400,6 +429,33 @@ async function sendNotificationEmail({ clientName, clientEmail, sessionId, folde
 // ============================================================
 // UTILITIES
 // ============================================================
+
+function buildClientInfoText({ sessionId, clientName, clientEmail, clientCompany, clientPhone, isCompany, notes }) {
+  const lines = [
+    '============================================',
+    '  CLIENT INFORMATION SUMMARY',
+    '============================================',
+    '',
+    `Reference:      ${sessionId || 'N/A'}`,
+    `Date:           ${new Date().toISOString().slice(0, 10)}`,
+    '',
+    '--- Contact Details ---',
+    `Full Name:      ${clientName || 'N/A'}`,
+    `Email:          ${clientEmail || 'N/A'}`,
+    `Phone:          ${clientPhone || 'Not provided'}`,
+    `Company:        ${clientCompany || 'Not provided'}`,
+    `Account Type:   ${isCompany ? 'Company / Entity' : 'Individual'}`,
+    '',
+    '--- Account Purpose / Notes ---',
+    notes || 'No additional notes provided.',
+    '',
+    '============================================',
+    `  Generated: ${new Date().toISOString()}`,
+    '============================================',
+    ''
+  ];
+  return lines.join('\n');
+}
 
 function respond(statusCode, body) {
   return { statusCode, headers: CORS, body: JSON.stringify(body) };

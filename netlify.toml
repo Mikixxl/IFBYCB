@@ -11,7 +11,7 @@
 # Daily import: scrape worldgovernmentbonds.com and write to Netlify Blobs.
 # Runs at 06:00 UTC every day.
 [functions.fetch-bonds]
-  schedule = "0 20 * * *"
+  schedule = "15 20 * * *"
 
 # API → Netlify Functions (must come BEFORE the SPA catch-all)
 [[redirects]]

@@ -280,6 +280,33 @@ async function fetchIMFCountryYields() {
   return results;
 }
 
+// ─── Country-specific 10Y yield scrapers (alt sources when FRED/IMF unavailable)
+// Returns a map of { code → yield } pre-fetched before the table loop.
+async function fetchAltCountryYields() {
+  const results = {};
+
+  // Singapore — MAS (Monetary Authority of Singapore) SGS benchmark yields API.
+  // No key required.  resource_id 9a0bf149… is the monthly SGS benchmark table.
+  await (async () => {
+    const TIMEOUT = new Promise(r => setTimeout(() => r(null), 4000));
+    const json = await Promise.race([
+      getJson("https://eservices.mas.gov.sg/api/action/datastore/search.json?resource_id=9a0bf149-308c-4bd2-832d-76c8e6cb47ed&sort=end_of_period%20desc&limit=5")
+        .catch(() => null),
+      TIMEOUT,
+    ]);
+    const records = json?.result?.records ?? [];
+    for (const rec of records) {
+      // Field name is ann_yield_10yr (confirmed in MAS API schema)
+      const v = parseFloat(rec["ann_yield_10yr"] ?? rec["ann_yield_10y"] ?? "");
+      if (Number.isFinite(v) && v > 0) { results.SG = v; break; }
+    }
+  })();
+
+  if (Object.keys(results).length > 0)
+    console.log(`[fetch-bonds] Alt country 10Y: ${Object.keys(results).length} (${Object.keys(results).join(", ")})`);
+  return results;
+}
+
 // ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
 // No key required. https://www.bankofcanada.ca/valet/docs/
 const BOC_TENORS = {
@@ -714,13 +741,13 @@ exports.handler = async () => {
   } catch(e) { console.error("[fetch-bonds] Blob 'yield-curves' write failed:", e.message); }
 
   // ── 2. Bonds table (35 countries × 10Y) ──────────────────────────────────────
-  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD (24 countries) →
-  //           IMF IFS FIGB_PA (BR,TR,IN,CN,SG,ID,MY,TH,PH,SA) → WGB → demo.
-  // Pre-fetch FRED and IMF in parallel before the per-wave WGB loop.
+  // Priority: curve 10Y → FRED OECD (24) → IMF IFS → alt (MAS…) → WGB → demo.
+  // All secondary sources pre-fetched in parallel before the wave loop.
   console.log("[fetch-bonds] Bonds table…");
-  const [fredCountryYields, imfCountryYields] = await Promise.all([
+  const [fredCountryYields, imfCountryYields, altCountryYields] = await Promise.all([
     fetchFredCountryYields(FRED_KEY).catch(() => ({})),
     fetchIMFCountryYields().catch(() => ({})),
+    fetchAltCountryYields().catch(() => ({})),
   ]);
   const fredLiveCount = Object.keys(fredCountryYields).length;
   if (fredLiveCount > 0) console.log(`[fetch-bonds] FRED country 10Y: ${fredLiveCount} (${Object.keys(fredCountryYields).join(", ")})`);
@@ -732,7 +759,8 @@ exports.handler = async () => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;
         const fromFred  = fredCountryYields[c.code] ?? null;
         const fromIMF   = imfCountryYields[c.code] ?? null;
-        const live = fromCurve ?? fromFred ?? fromIMF ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        const fromAlt   = altCountryYields[c.code] ?? null;
+        const live = fromCurve ?? fromFred ?? fromIMF ?? fromAlt ?? await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
         return {

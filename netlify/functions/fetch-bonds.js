@@ -151,6 +151,8 @@ const FRED_COUNTRY_10Y = {
   // Eurozone — all OECD members with OECD Main Economic Indicators series in FRED
   NL:"IRLTLT01NLM156N", AT:"IRLTLT01ATM156N", BE:"IRLTLT01BEM156N",
   PT:"IRLTLT01PTM156N", GR:"IRLTLT01GRM156N",
+  // OECD Key Partner / non-member series also published in FRED
+  CN:"IRLTLT01CNM156N",
 };
 
 async function fetchFredCountryYields(apiKey) {
@@ -166,7 +168,8 @@ async function fetchFredCountryYields(apiKey) {
 }
 
 async function fredLatest(seriesId, apiKey) {
-  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&limit=10&sort_order=desc&api_key=${apiKey}&file_type=json`;
+  // limit=30 so series with long publication lags (emerging markets) are still found
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&limit=30&sort_order=desc&api_key=${apiKey}&file_type=json`;
   const data = await getJson(url);
   for (const obs of data.observations ?? []) {
     if (obs.value !== "." && obs.value !== "N/A") return parseFloat(obs.value);
@@ -350,7 +353,9 @@ async function fetchBoECurve() {
   // _iadb-FromShowColumns.asp is the actual CSV-download handler used by the BoE website.
   const IADB_CSV   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&SeriesCodes=${codes}&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}`;
 
-  // Step 2 — load series-selection page (stores series in session state)
+  // Step 2 — load series-selection page; IADB renders the data in an HTML table.
+  // Try parseBoEHTML on the response — if it finds ≥4 tenors, return immediately
+  // without needing the CSV download at all.
   try {
     const r = await fetch(SERIES_URL, {
       headers: { ...BASE, "Accept": "text/html,*/*", "Referer": "https://www.bankofengland.co.uk/boeapps/database/", "Cookie": cookieHeader() },
@@ -358,8 +363,12 @@ async function fetchBoECurve() {
     const c = collectSetCookies(r);
     addCookies(c);
     const text = await r.text();
-    console.log(`[fetch-bonds] BoE step2: status=${r.status} isHTML=${text.trimStart().startsWith("<")} +cookies=${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
-    if (!text.trimStart().startsWith("<")) {
+    const isHTML = text.trimStart().startsWith("<");
+    console.log(`[fetch-bonds] BoE step2: status=${r.status} isHTML=${isHTML} +cookies=${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
+    if (isHTML) {
+      const parsed = parseBoEHTML(text);
+      if (parsed) { console.log("[fetch-bonds] BoE: HTML table parsed ✓"); return parsed; }
+    } else {
       const result = parseBoECSV(text, "step2");
       if (result) return result;
     }
@@ -408,6 +417,40 @@ function parseBoECSV(text, label) {
   if (Object.keys(tenors).length >= 4) return tenors;
   console.warn(`BoE ${label}: only ${Object.keys(tenors).length} tenors`);
   return null;
+}
+
+// Parse yield tenors from the HTML table that fromshowcolumns.asp returns when
+// UsingCodes=Y — the page renders a <table> with series-code column headers.
+// This avoids the brittle CSV-download mechanism entirely.
+function parseBoEHTML(html) {
+  const $ = cheerio.load(html);
+  const codeToTenor = Object.fromEntries(
+    Object.entries(BOE_TENORS).map(([t, c]) => [c.toUpperCase(), t])
+  );
+  let best = null;
+  $("table").each((_, table) => {
+    // Build header index: column position → series code
+    const colIdx = {};
+    $(table).find("tr").first().find("th, td").each((i, cell) => {
+      const txt = $(cell).text().trim().toUpperCase();
+      if (codeToTenor[txt]) colIdx[i] = codeToTenor[txt];
+    });
+    if (Object.keys(colIdx).length < 2) return; // not the right table
+    // Walk all rows; keep the last one that has numeric data
+    let latest = null;
+    $(table).find("tr").each((_, row) => {
+      const cells = $(row).find("td");
+      if (!cells.length) return;
+      const tenors = {};
+      Object.entries(colIdx).forEach(([i, tenor]) => {
+        const v = parseFloat($(cells[+i]).text().trim().replace(",", "."));
+        if (!isNaN(v) && v > 0) tenors[tenor] = v;
+      });
+      if (Object.keys(tenors).length >= 2) latest = tenors;
+    });
+    if (latest && Object.keys(latest).length >= 4) best = latest;
+  });
+  return best;
 }
 
 // ─── WGB central-bank-rates page ─────────────────────────────────────────────

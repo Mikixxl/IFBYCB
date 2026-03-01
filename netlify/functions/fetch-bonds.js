@@ -278,46 +278,62 @@ async function fetchBoECurve() {
   const now    = new Date();
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const from   = new Date(now); from.setMonth(now.getMonth() - 3);
-  const cParam = Object.values(BOE_TENORS).map(c => `C=${c}`).join("&");
   const codes  = Object.values(BOE_TENORS).join(",");
-  const dateP  = [
-    `FD=${from.getDate()}`,`FM=${MONTHS[from.getMonth()]}`,`FY=${from.getFullYear()}`,
-    `TD=${now.getDate()}`,`TM=${MONTHS[now.getMonth()]}`,`TY=${now.getFullYear()}`,
-  ].join("&");
+  const cParam = Object.values(BOE_TENORS).map(c => `C=${c}`).join("&");
+  const fromD  = from.getDate(), fromM = MONTHS[from.getMonth()], fromY = from.getFullYear();
+  const toD    = now.getDate(),  toM   = MONTHS[now.getMonth()],  toY   = now.getFullYear();
 
-  // Try two URL formats — the _iadb-FromShowColumns.asp endpoint is the only
-  // stable path; /a-mdahd/Results (our previous attempt) returned HTTP 404.
-  // Format A: Travel + individual C= params (matches BoE UI export links more closely).
-  // Format B: SeriesCodes= + UsingCodes=Y + DAT=NOM (simpler, no date range).
+  // Three URL formats to try in order.
+  // A: C= per-series params with DAT=RNG but NO Travel (Travel=NIxRSxSUx was
+  //    navigating to the wrong database section, returning unrelated CSV data).
+  // B: SeriesCodes= + UsingCodes=Y with date range — the original working format
+  //    (DAT=NOM was triggering an interactive HTML page; explicit dates avoid that).
+  // C: Same as B but with a one-month shorter range in case the server dislikes
+  //    wide date ranges for these series.
+  const from2 = new Date(now); from2.setMonth(now.getMonth() - 1);
+  const f2D = from2.getDate(), f2M = MONTHS[from2.getMonth()], f2Y = from2.getFullYear();
+
   const URLS = [
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&Travel=NIxRSxSUx&FromSeries=1&ToSeries=50&DAT=RNG&${dateP}&VFD=Y&${cParam}&Filter=N`,
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=NOM&SeriesCodes=${codes}`,
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=RNG&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&${cParam}`,
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${f2D}&FM=${f2M}&FY=${f2Y}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
   ];
+  // Include OneTrust consent cookie — BoE uses OneTrust CMP; this cookie signals
+  // the user has acknowledged the consent banner and avoids the cookie-wall redirect.
   const HDRS = {
     "User-Agent":      UA,
     "Accept":          "text/csv,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
     "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
     "Cache-Control":   "no-cache",
+    "Cookie":          "OptanonAlertBoxClosed=2025-01-01T00%3A00%3A00.000Z; OptanonConsent=isGpcEnabled%3D0%26interactionCount%3D1%26groups%3DC0001%3A1%2CC0002%3A1%2CC0003%3A1",
   };
 
   for (let i = 0; i < URLS.length; i++) {
     let res;
-    try { res = await fetch(URLS[i], { headers: HDRS }); } catch(e) { continue; }
+    try { res = await fetch(URLS[i], { headers: HDRS }); } catch(e) {
+      console.warn(`BoE URL${i+1}: network error — ${e.message}`); continue;
+    }
     if (!res.ok) { console.warn(`BoE URL${i+1}: HTTP ${res.status}`); continue; }
     const text = await res.text();
     if (text.trimStart().startsWith("<")) {
-      console.warn(`BoE URL${i+1}: returned HTML (blocked/redirected)`);
+      // Log the start of the HTML to identify whether it is a Cloudflare challenge,
+      // cookie-consent wall, or BoE error page — helps diagnose future failures.
+      const snippet = text.replace(/\s+/g, " ").slice(0, 250);
+      console.warn(`BoE URL${i+1}: returned HTML — ${snippet}`);
       continue;
     }
     const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
     const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
-    if (hIdx < 0) { console.warn(`BoE URL${i+1}: CSV header not found`); continue; }
+    if (hIdx < 0) {
+      const snippet = text.replace(/\s+/g, " ").slice(0, 250);
+      console.warn(`BoE URL${i+1}: CSV header not found — response start: ${snippet}`);
+      continue;
+    }
     const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
     const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
     const latest   = dataRows[dataRows.length - 1];
-    if (!latest) continue;
+    if (!latest) { console.warn(`BoE URL${i+1}: no data rows`); continue; }
     const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
     const tenors = {};
     for (const [tenor, code] of Object.entries(BOE_TENORS)) {

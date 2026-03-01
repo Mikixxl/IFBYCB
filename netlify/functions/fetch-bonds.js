@@ -168,8 +168,8 @@ async function fetchFredCountryYields(apiKey) {
 }
 
 async function fredLatest(seriesId, apiKey) {
-  // limit=30 so series with long publication lags (emerging markets) are still found
-  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&limit=30&sort_order=desc&api_key=${apiKey}&file_type=json`;
+  // limit=120 (10 years) covers series with long publication lags or infrequent updates
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&limit=120&sort_order=desc&api_key=${apiKey}&file_type=json`;
   const data = await getJson(url);
   for (const obs of data.observations ?? []) {
     if (obs.value !== "." && obs.value !== "N/A") return parseFloat(obs.value);
@@ -338,9 +338,13 @@ async function fetchBoECurve() {
   });
   const cookieHeader = () => Object.values(cookieMap).join("; ");
 
-  // Step 1 — IADB home (establishes ASP.NET_SessionId for the /boeapps/ app)
+  // Step 1 — Cold hit to fromshowcolumns.asp itself (no params).
+  // In Classic ASP, session cookies are keyed to the virtual directory.
+  // fromshowcolumns.asp lives in a different IIS application than the
+  // /boeapps/database/ index (they issue different ASPSESSIONID cookie names).
+  // Visiting it cold first establishes the right session that step 2 can reuse.
   try {
-    const r = await fetch("https://www.bankofengland.co.uk/boeapps/database/",
+    const r = await fetch("https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp",
       { headers: { ...BASE, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8" } });
     const c = collectSetCookies(r);
     addCookies(c);
@@ -429,27 +433,41 @@ function parseBoEHTML(html) {
   );
   let best = null;
   $("table").each((_, table) => {
-    // Build header index: column position → series code
-    const colIdx = {};
-    $(table).find("tr").first().find("th, td").each((i, cell) => {
-      const txt = $(cell).text().trim().toUpperCase();
-      if (codeToTenor[txt]) colIdx[i] = codeToTenor[txt];
-    });
-    if (Object.keys(colIdx).length < 2) return; // not the right table
-    // Walk all rows; keep the last one that has numeric data
+    // Scan ALL rows for a header row — IADB sometimes puts headers mid-table
+    const rows = $(table).find("tr").toArray();
+    let colIdx = {};
+    let headerRowIdx = -1;
+    for (let ri = 0; ri < rows.length; ri++) {
+      const cells = $(rows[ri]).find("th, td");
+      const candidate = {};
+      cells.each((ci, cell) => {
+        const txt = $(cell).text().trim().toUpperCase();
+        // Match exact code OR code as substring (e.g. "IUDMNPY" inside longer text)
+        for (const [code, tenor] of Object.entries(codeToTenor)) {
+          if (txt === code || txt.includes(code)) { candidate[ci] = tenor; break; }
+        }
+      });
+      if (Object.keys(candidate).length >= 2) { colIdx = candidate; headerRowIdx = ri; break; }
+    }
+    if (headerRowIdx < 0) return; // no header row found in this table
+    // Walk data rows after the header; keep the last row with numeric values
     let latest = null;
-    $(table).find("tr").each((_, row) => {
-      const cells = $(row).find("td");
-      if (!cells.length) return;
+    for (let ri = headerRowIdx + 1; ri < rows.length; ri++) {
+      const cells = $(rows[ri]).find("td");
+      if (!cells.length) continue;
       const tenors = {};
-      Object.entries(colIdx).forEach(([i, tenor]) => {
-        const v = parseFloat($(cells[+i]).text().trim().replace(",", "."));
+      Object.entries(colIdx).forEach(([ci, tenor]) => {
+        const v = parseFloat($(cells[+ci]).text().trim().replace(",", "."));
         if (!isNaN(v) && v > 0) tenors[tenor] = v;
       });
       if (Object.keys(tenors).length >= 2) latest = tenors;
-    });
+    }
     if (latest && Object.keys(latest).length >= 4) best = latest;
   });
+  if (!best) {
+    // Log the start of the HTML so we can diagnose what the IADB is returning
+    console.warn(`[fetch-bonds] BoE parseBoEHTML: no table found — HTML start: ${html.replace(/\s+/g, " ").slice(0, 400)}`);
+  }
   return best;
 }
 

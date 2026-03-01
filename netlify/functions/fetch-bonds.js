@@ -37,8 +37,17 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
+// 5-second hard cap on every outbound request; prevents TCP-stall hangs.
+// Uses AbortController (compatible with node-fetch v2 on any Node version).
+const REQ_TIMEOUT_MS = 5000;
+function fetchWithTimeout(url, opts = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REQ_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(timer));
+}
+
 async function getHtml(url) {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: {
       "User-Agent":              UA,
       "Accept":                  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -62,7 +71,7 @@ async function getHtml(url) {
 }
 
 async function getJson(url, extraHeaders = {}) {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { "User-Agent": UA, Accept: "application/json", ...extraHeaders },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -663,72 +672,36 @@ exports.handler = async () => {
   const FRED_KEY = process.env.FRED_API_KEY || "";
   const asOf     = todayISO();
 
-  // ── 1. Yield curves (fetched first so bonds table can reuse 10Y values) ────────
+  // ── 1. Yield curves (all 8 sources fetched in parallel) ──────────────────────
+  // Each entry: primary API (→ WGB if primary fails) or WGB-only.
+  // All requests now have a 5-second per-call timeout (via fetchWithTimeout) so
+  // a single stalled TCP connection cannot block the entire function.
+  // BoE IADB removed: it returns BoE-website HTML on every run from Netlify IPs.
   console.log("[fetch-bonds] Yield curves…");
   const curves = {};
 
-  // US: FRED preferred → WGB fallback
-  if (FRED_KEY) {
-    const fred = await fetchUSCurveFRED(FRED_KEY).catch(e => { console.warn("FRED curve:", e.message); return null; });
-    if (fred) { curves.US = fred; console.log("[fetch-bonds] US: FRED ✓"); }
-    else {
-      const wgb = await scrapeWGBCurve("united-states").catch(e => { console.warn("[fetch-bonds] US WGB:", e.message); return null; });
-      if (wgb) { curves.US = wgb; console.log("[fetch-bonds] US: WGB fallback ✓"); }
-      else console.warn("[fetch-bonds] US: all sources failed — excluded from yield curve");
-    }
-  } else {
-    console.log("[fetch-bonds] FRED_API_KEY not set — using WGB for US");
-    const wgb = await scrapeWGBCurve("united-states").catch(e => { console.warn("[fetch-bonds] US WGB:", e.message); return null; });
-    if (wgb) { curves.US = wgb; console.log("[fetch-bonds] US: WGB ✓"); }
-    else console.warn("[fetch-bonds] US: WGB failed — excluded");
+  async function resolveCurve(code, primaryFn, wgbSlug, label) {
+    const pri = primaryFn ? await primaryFn().catch(() => null) : null;
+    if (pri) { console.log(`[fetch-bonds] ${label}: primary ✓`); return [code, pri]; }
+    const wgb = wgbSlug ? await scrapeWGBCurve(wgbSlug).catch(() => null) : null;
+    if (wgb) { console.log(`[fetch-bonds] ${label}: WGB ✓`); return [code, wgb]; }
+    console.warn(`[fetch-bonds] ${label}: all sources failed — excluded`);
+    return [code, null];
   }
 
-  // DE: ECB SDMX preferred → WGB fallback
-  const ecbCurve = await fetchECBCurve().catch(e => { console.warn("ECB curve:", e.message); return null; });
-  if (ecbCurve) { curves.DE = ecbCurve; console.log("[fetch-bonds] DE: ECB ✓"); }
-  else {
-    const wgb = await scrapeWGBCurve("germany").catch(e => { console.warn("[fetch-bonds] DE WGB:", e.message); return null; });
-    if (wgb) { curves.DE = wgb; console.log("[fetch-bonds] DE: WGB fallback ✓"); }
-    else console.warn("[fetch-bonds] DE: all sources failed — excluded");
+  const curveJobs = [
+    resolveCurve("US", FRED_KEY ? () => fetchUSCurveFRED(FRED_KEY) : null, "united-states", "US"),
+    resolveCurve("DE", () => fetchECBCurve(),         "germany",       "DE"),
+    resolveCurve("GB", null,                          "united-kingdom", "GB"),  // BoE inaccessible
+    resolveCurve("CA", () => fetchBoCCurve(),         "canada",        "CA"),
+    resolveCurve("JP", () => fetchMoFJapanCurve(),    "japan",         "JP"),
+    resolveCurve("FR", null,                          "france",        "FR"),
+    resolveCurve("IT", null,                          "italy",         "IT"),
+    resolveCurve("CN", null,                          "china",         "CN"),
+  ];
+  for (const [code, data] of await Promise.all(curveJobs)) {
+    if (data) curves[code] = data;
   }
-
-  // GB: Bank of England preferred → WGB fallback
-  const boeCurve = await fetchBoECurve().catch(e => { console.warn("BoE:", e.message); return null; });
-  if (boeCurve) { curves.GB = boeCurve; console.log("[fetch-bonds] GB: BoE ✓"); }
-  else {
-    const wgb = await scrapeWGBCurve("united-kingdom").catch(e => { console.warn("[fetch-bonds] GB WGB:", e.message); return null; });
-    if (wgb) { curves.GB = wgb; console.log("[fetch-bonds] GB: WGB fallback ✓"); }
-    else console.warn("[fetch-bonds] GB: all sources failed — excluded");
-  }
-
-  // CA: Bank of Canada preferred → WGB fallback
-  const bocCurve = await fetchBoCCurve().catch(e => { console.warn("BoC:", e.message); return null; });
-  if (bocCurve) { curves.CA = bocCurve; console.log("[fetch-bonds] CA: BoC ✓"); }
-  else {
-    const wgb = await scrapeWGBCurve("canada").catch(e => { console.warn("[fetch-bonds] CA WGB:", e.message); return null; });
-    if (wgb) { curves.CA = wgb; console.log("[fetch-bonds] CA: WGB fallback ✓"); }
-    else console.warn("[fetch-bonds] CA: all sources failed — excluded");
-  }
-
-  // JP: MoF Japan preferred → WGB fallback
-  const mofCurve = await fetchMoFJapanCurve().catch(e => { console.warn("MoF:", e.message); return null; });
-  if (mofCurve) { curves.JP = mofCurve; console.log("[fetch-bonds] JP: MoF ✓"); }
-  else {
-    const wgb = await scrapeWGBCurve("japan").catch(e => { console.warn("[fetch-bonds] JP WGB:", e.message); return null; });
-    if (wgb) { curves.JP = wgb; console.log("[fetch-bonds] JP: WGB fallback ✓"); }
-    else console.warn("[fetch-bonds] JP: all sources failed — excluded");
-  }
-
-  // FR, IT, CN: WGB only (no free official API available)
-  await Promise.all([
-    { code:"FR", slug:"france" },
-    { code:"IT", slug:"italy" },
-    { code:"CN", slug:"china" },
-  ].map(async ({ code, slug }) => {
-    const c = await scrapeWGBCurve(slug).catch(e => { console.warn(`[fetch-bonds] ${code} WGB: ${e.message}`); return null; });
-    if (c) { curves[code] = c; console.log(`[fetch-bonds] ${code}: WGB ✓`); }
-    else console.warn(`[fetch-bonds] ${code}: WGB failed — excluded from yield curve`);
-  }));
 
   const TENORS = ["1M","3M","6M","1Y","2Y","5Y","7Y","10Y","20Y","30Y"];
   const ycCountries = Object.keys(YC_META)

@@ -297,8 +297,8 @@ function collectSetCookies(res) {
     ? res.headers.getSetCookie()
     : [res.headers.get("set-cookie") || ""];
   return raw
-    .flatMap(h => h.split(/,(?=[^ ]/))  // naively split combined Set-Cookie header
-    .map(c => c.split(";")[0].trim()))
+    .flatMap(h => h.split(/,(?=[^ ])/))  // naively split combined Set-Cookie header
+    .map(c => c.split(";")[0].trim())
     .filter(Boolean);
 }
 

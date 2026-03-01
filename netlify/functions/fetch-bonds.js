@@ -20,7 +20,7 @@
 //   UK, CA, JP, CN, AU, NZ, CH, SE, NO → WGB central-bank-rates/ page
 //
 // Bonds table (35 countries, 10Y only):
-//   curve 10Y → FRED OECD (24 countries incl. AT,BE,GR,NL,PT) → WGB → demo
+//   curve 10Y → FRED OECD (24 countries) → IMF IFS FIGB_PA → WGB → demo
 //
 // Stored blobs in "bonds-cache":
 //   "latest"        → bonds table
@@ -234,6 +234,46 @@ async function fetchECBRate() {
     "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.DFR.LEV?lastNObservations=5&format=jsondata"
   );
   return parseEcbValue(json);
+}
+
+// ─── IMF IFS Government Bond Yields ──────────────────────────────────────────
+// Free, no key.  FIGB_PA = Government Securities: Yields (Long-Term / 10Y).
+// Covers all IMF member countries — used as fallback for the bonds table for
+// emerging-market countries not available via FRED OECD.
+// One batched request covers all target countries.
+function parseImfIfsSeries(series) {
+  try {
+    const obs = series.Obs ?? [];
+    const arr = Array.isArray(obs) ? obs : [obs];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const v = parseFloat(arr[i]["@OBS_VALUE"]);
+      if (Number.isFinite(v) && v > 0) return v;
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function fetchIMFCountryYields() {
+  // Countries not covered by FRED OECD series
+  const countries = ["BR","TR","IN","CN","SG","ID","MY","TH","PH","SA"];
+  const from = new Date(); from.setFullYear(from.getFullYear() - 3);
+  const startPeriod = from.toISOString().slice(0, 7); // YYYY-MM
+  const json = await getJson(
+    `https://dataservices.imf.org/REST/SDMX_JSON.svc/CompactData/IFS/M.${countries.join("+")}.FIGB_PA.?startPeriod=${startPeriod}`
+  ).catch(e => { console.warn("[fetch-bonds] IMF IFS:", e.message); return null; });
+  if (!json) return {};
+  let seriesArr = json?.CompactData?.DataSet?.Series ?? null;
+  if (!seriesArr) return {};
+  if (!Array.isArray(seriesArr)) seriesArr = [seriesArr]; // single country → object
+  const results = {};
+  for (const s of seriesArr) {
+    const cc = s["@REF_AREA"];
+    const v  = parseImfIfsSeries(s);
+    if (v !== null) results[cc] = v;
+  }
+  if (Object.keys(results).length > 0)
+    console.log(`[fetch-bonds] IMF IFS 10Y: ${Object.keys(results).length} (${Object.keys(results).join(", ")})`);
+  return results;
 }
 
 // ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
@@ -670,11 +710,14 @@ exports.handler = async () => {
   } catch(e) { console.error("[fetch-bonds] Blob 'yield-curves' write failed:", e.message); }
 
   // ── 2. Bonds table (35 countries × 10Y) ──────────────────────────────────────
-  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD monthly →
-  //           ECB IRS sovereign (Eurozone) → WGB scraping → demo.
-  // Pre-fetch secondary sources in parallel before the per-wave WGB loop.
+  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD (24 countries) →
+  //           IMF IFS FIGB_PA (BR,TR,IN,CN,SG,ID,MY,TH,PH,SA) → WGB → demo.
+  // Pre-fetch FRED and IMF in parallel before the per-wave WGB loop.
   console.log("[fetch-bonds] Bonds table…");
-  const fredCountryYields = await fetchFredCountryYields(FRED_KEY).catch(() => ({}));
+  const [fredCountryYields, imfCountryYields] = await Promise.all([
+    fetchFredCountryYields(FRED_KEY).catch(() => ({})),
+    fetchIMFCountryYields().catch(() => ({})),
+  ]);
   const fredLiveCount = Object.keys(fredCountryYields).length;
   if (fredLiveCount > 0) console.log(`[fetch-bonds] FRED country 10Y: ${fredLiveCount} (${Object.keys(fredCountryYields).join(", ")})`);
 
@@ -685,7 +728,8 @@ exports.handler = async () => {
       BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;
         const fromFred  = fredCountryYields[c.code] ?? null;
-        const live = fromCurve ?? fromFred ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        const fromIMF   = imfCountryYields[c.code] ?? null;
+        const live = fromCurve ?? fromFred ?? fromIMF ?? await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
         return {

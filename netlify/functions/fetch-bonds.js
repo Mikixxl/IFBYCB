@@ -258,9 +258,13 @@ async function fetchIMFCountryYields() {
   const countries = ["BR","TR","IN","CN","SG","ID","MY","TH","PH","SA"];
   const from = new Date(); from.setFullYear(from.getFullYear() - 3);
   const startPeriod = from.toISOString().slice(0, 7); // YYYY-MM
-  const json = await getJson(
-    `https://dataservices.imf.org/REST/SDMX_JSON.svc/CompactData/IFS/M.${countries.join("+")}.FIGB_PA.?startPeriod=${startPeriod}`
-  ).catch(e => { console.warn("[fetch-bonds] IMF IFS:", e.message); return null; });
+  // 4-second hard cap — if the service is blocked or slow, fail fast
+  const TIMEOUT = new Promise(resolve => setTimeout(() => resolve(null), 4000));
+  const json = await Promise.race([
+    getJson(`https://dataservices.imf.org/REST/SDMX_JSON.svc/CompactData/IFS/M.${countries.join("+")}.FIGB_PA?startPeriod=${startPeriod}`)
+      .catch(e => { console.warn("[fetch-bonds] IMF IFS:", e.message); return null; }),
+    TIMEOUT,
+  ]);
   if (!json) return {};
   let seriesArr = json?.CompactData?.DataSet?.Series ?? null;
   if (!seriesArr) return {};
@@ -723,7 +727,6 @@ exports.handler = async () => {
 
   const bonds = []; let liveCount = 0;
   for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
-    if (i > 0) await sleep(800 + Math.floor(Math.random() * 600));
     const wave = await Promise.all(
       BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;

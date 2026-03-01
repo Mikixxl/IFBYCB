@@ -120,6 +120,31 @@ const FRED_YIELD_SERIES = {
   "2Y":"DGS2","5Y":"DGS5","7Y":"DGS7","10Y":"DGS10","20Y":"DGS20","30Y":"DGS30",
 };
 
+// OECD monthly 10Y government bond yields via FRED — used as secondary source
+// for the bonds table when yield-curve APIs and WGB scraping are both unavailable.
+// Skip US/DE/CA/JP — those are covered by primary curve APIs.
+const FRED_COUNTRY_10Y = {
+  GB:"IRLTLT01GBM156N", FR:"IRLTLT01FRM156N", IT:"IRLTLT01ITM156N",
+  ES:"IRLTLT01ESM156N", AU:"IRLTLT01AUM156N", NZ:"IRLTLT01NZM156N",
+  KR:"IRLTLT01KRM156N", SE:"IRLTLT01SEM156N", NO:"IRLTLT01NOM156N",
+  CH:"IRLTLT01CHM156N", PL:"IRLTLT01PLM156N", CZ:"IRLTLT01CZM156N",
+  HU:"IRLTLT01HUM156N", MX:"IRLTLT01MXM156N", IL:"IRLTLT01ILM156N",
+  ZA:"IRLTLT01ZAM156N", BR:"IRLTLT01BRM156N", TR:"IRLTLT01TRM156N",
+  IN:"IRLTLT01INM156N",
+};
+
+async function fetchFredCountryYields(apiKey) {
+  if (!apiKey) return {};
+  const results = {};
+  await Promise.allSettled(
+    Object.entries(FRED_COUNTRY_10Y).map(async ([code, sid]) => {
+      const val = await fredLatest(sid, apiKey).catch(() => null);
+      if (val !== null) results[code] = val;
+    })
+  );
+  return results;
+}
+
 async function fredLatest(seriesId, apiKey) {
   const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&limit=10&sort_order=desc&api_key=${apiKey}&file_type=json`;
   const data = await getJson(url);
@@ -252,56 +277,60 @@ const BOE_TENORS = {
 async function fetchBoECurve() {
   const now    = new Date();
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  // Use the exact URL/parameter format the BoE Statistics database UI generates
-  // for its own CSV export links (path /a-mdahd/Results, series as repeated C=
-  // params, Travel/VFD/Filter flags).  The _iadb-FromShowColumns.asp path with
-  // SeriesCodes= is an older form that now often returns HTML.
   const from   = new Date(now); from.setMonth(now.getMonth() - 3);
   const cParam = Object.values(BOE_TENORS).map(c => `C=${c}`).join("&");
-  const params = [
-    "csv.x=yes","CSVF=TT",
-    "Travel=NIxRSxSUx","FromSeries=1","ToSeries=50",
-    "DAT=RNG",
+  const codes  = Object.values(BOE_TENORS).join(",");
+  const dateP  = [
     `FD=${from.getDate()}`,`FM=${MONTHS[from.getMonth()]}`,`FY=${from.getFullYear()}`,
     `TD=${now.getDate()}`,`TM=${MONTHS[now.getMonth()]}`,`TY=${now.getFullYear()}`,
-    "VFD=Y","html.x=0","html.y=0",
-    cParam,
-    "Filter=N",
   ].join("&");
-  const url    = `https://www.bankofengland.co.uk/boeapps/database/a-mdahd/Results?${params}`;
-  // Use CSV-specific headers — getHtml sends Accept:text/html which triggers an HTML response
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":      UA,
-      "Accept":          "text/csv,text/plain,*/*",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
-      "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
-      "Cache-Control":   "no-cache",
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  // Guard: BoE sometimes returns HTML (200 OK) when Cloudflare or the server
-  // rejects the request — detect this before trying to parse as CSV.
-  if (text.trimStart().startsWith("<")) throw new Error("BoE returned HTML (blocked or redirected)");
-  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-  const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
-  if (hIdx < 0) throw new Error("BoE CSV header not found");
-  const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
-  const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
-  const latest   = dataRows[dataRows.length - 1];
-  if (!latest) return null;
-  const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
-  const tenors = {};
-  for (const [tenor, code] of Object.entries(BOE_TENORS)) {
-    const i = headers.indexOf(code);
-    if (i >= 0 && vals[i] && vals[i] !== "n/a" && vals[i] !== "" && vals[i] !== "..") {
-      const v = parseFloat(vals[i]);
-      if (!isNaN(v)) tenors[tenor] = v;
+
+  // Try two URL formats — the _iadb-FromShowColumns.asp endpoint is the only
+  // stable path; /a-mdahd/Results (our previous attempt) returned HTTP 404.
+  // Format A: Travel + individual C= params (matches BoE UI export links more closely).
+  // Format B: SeriesCodes= + UsingCodes=Y + DAT=NOM (simpler, no date range).
+  const URLS = [
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&Travel=NIxRSxSUx&FromSeries=1&ToSeries=50&DAT=RNG&${dateP}&VFD=Y&${cParam}&Filter=N`,
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=NOM&SeriesCodes=${codes}`,
+  ];
+  const HDRS = {
+    "User-Agent":      UA,
+    "Accept":          "text/csv,text/plain,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
+    "Cache-Control":   "no-cache",
+  };
+
+  for (let i = 0; i < URLS.length; i++) {
+    let res;
+    try { res = await fetch(URLS[i], { headers: HDRS }); } catch(e) { continue; }
+    if (!res.ok) { console.warn(`BoE URL${i+1}: HTTP ${res.status}`); continue; }
+    const text = await res.text();
+    if (text.trimStart().startsWith("<")) {
+      console.warn(`BoE URL${i+1}: returned HTML (blocked/redirected)`);
+      continue;
     }
+    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+    const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
+    if (hIdx < 0) { console.warn(`BoE URL${i+1}: CSV header not found`); continue; }
+    const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
+    const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
+    const latest   = dataRows[dataRows.length - 1];
+    if (!latest) continue;
+    const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
+    const tenors = {};
+    for (const [tenor, code] of Object.entries(BOE_TENORS)) {
+      const idx = headers.indexOf(code);
+      if (idx >= 0 && vals[idx] && vals[idx] !== "n/a" && vals[idx] !== "" && vals[idx] !== "..") {
+        const v = parseFloat(vals[idx]);
+        if (!isNaN(v)) tenors[tenor] = v;
+      }
+    }
+    if (Object.keys(tenors).length >= 4) return tenors;
+    console.warn(`BoE URL${i+1}: too few tenors (${Object.keys(tenors).length})`);
   }
-  return Object.keys(tenors).length >= 4 ? tenors : null;
+  throw new Error("all BoE URL formats failed");
 }
 
 // ─── WGB central-bank-rates page ─────────────────────────────────────────────
@@ -503,17 +532,22 @@ exports.handler = async () => {
   } catch(e) { console.error("[fetch-bonds] Blob 'yield-curves' write failed:", e.message); }
 
   // ── 2. Bonds table (35 countries × 10Y) ──────────────────────────────────────
-  // Priority: official-API 10Y (from curves already fetched above) → WGB scrape → demo.
-  // This ensures countries with official APIs (US/DE/CA/JP/GB) always show live
-  // data in the table even when WGB is blocked by Cloudflare.
+  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD monthly → WGB → demo.
+  // Pre-fetch FRED country yields in parallel before the per-wave WGB loop so we
+  // don't make 15+ FRED calls inside the rate-limited WGB wave loop.
   console.log("[fetch-bonds] Bonds table…");
+  const fredCountryYields = await fetchFredCountryYields(FRED_KEY).catch(() => ({}));
+  const fredLiveCount = Object.keys(fredCountryYields).length;
+  if (fredLiveCount > 0) console.log(`[fetch-bonds] FRED country 10Y: ${fredLiveCount} (${Object.keys(fredCountryYields).join(", ")})`);
+
   const bonds = []; let liveCount = 0;
   for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
     if (i > 0) await sleep(800 + Math.floor(Math.random() * 600));
     const wave = await Promise.all(
       BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;
-        const live = fromCurve ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        const fromFred  = fredCountryYields[c.code] ?? null;
+        const live = fromCurve ?? fromFred ?? await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
         return {

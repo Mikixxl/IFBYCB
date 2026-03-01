@@ -20,7 +20,7 @@
 //   UK, CA, JP, CN, AU, NZ, CH, SE, NO → WGB central-bank-rates/ page
 //
 // Bonds table (35 countries, 10Y only):
-//   WGB per-country scraping; demo fallback for 10Y only (table clearly marks it)
+//   curve 10Y → FRED OECD → ECB IRS sovereign (AT,BE,GR,NL,PT) → WGB → demo
 //
 // Stored blobs in "bonds-cache":
 //   "latest"        → bonds table
@@ -230,6 +230,26 @@ async function fetchECBRate() {
   return parseEcbValue(json);
 }
 
+// ─── ECB SDMX IRS dataset — individual Eurozone sovereign 10Y yields ──────────
+// ECB publishes Maastricht criterion long-term interest rates (10Y sovereign
+// bond yields) for all Eurozone countries.  No API key required.
+// Covers: AT, BE, DE, ES, FR, GR, IT, NL, PT (and more)
+const ECB_COUNTRY_10Y_AREAS = ["AT","BE","GR","NL","PT"];
+
+async function fetchECBCountryYields() {
+  const results = {};
+  await Promise.allSettled(
+    ECB_COUNTRY_10Y_AREAS.map(async area => {
+      const json = await getJson(
+        `https://data-api.ecb.europa.eu/service/data/IRS/M.${area}.L.L40.CI.0.EUR.N.Z?lastNObservations=5&format=jsondata`
+      ).catch(() => null);
+      const val = json ? parseEcbValue(json) : null;
+      if (val !== null) results[area] = val;
+    })
+  );
+  return results;
+}
+
 // ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
 // No key required. https://www.bankofcanada.ca/valet/docs/
 const BOC_TENORS = {
@@ -316,13 +336,15 @@ async function fetchBoECurve() {
     "Cache-Control":   "no-cache",
   };
 
-  // BoE's IADB requires a live ASP.NET session to serve CSV.  A cold request
-  // returns the BoE website's session/consent HTML.  We use a three-step chain:
-  //   1. GET statistics landing page → collects BoE main-site session cookies
-  //   2. GET IADB URL with those cookies → IADB sets its own session cookie
-  //      (even if it still returns HTML, we collect its Set-Cookie)
-  //   3. GET IADB URL with ALL accumulated cookies → should now return CSV
-  // Each step's cookies are merged into a single map (later values win).
+  // BoE's IADB is a legacy ASP.NET app at /boeapps/database/ — completely
+  // separate from the CMS content pages at /statistics/.  Its session cookie
+  // (ASP.NET_SessionId) is only issued when you first hit the IADB app itself.
+  // Navigation flow that mirrors a real browser:
+  //   1. GET /boeapps/database/ → IADB home, establishes ASP.NET_SessionId
+  //   2. GET fromshowcolumns.asp with UsingCodes=Y&SeriesCodes=... → loads the
+  //      series-selection view; server stores chosen series in session state.
+  //      If it already returns CSV (unlikely but possible), return immediately.
+  //   3. GET same URL with csv.x=yes → triggers the CSV download handler.
   const cookieMap = {};
   const addCookies = arr => arr.forEach(c => {
     const k = c.split("=")[0].trim();
@@ -330,45 +352,42 @@ async function fetchBoECurve() {
   });
   const cookieHeader = () => Object.values(cookieMap).join("; ");
 
-  // Step 1 — stats landing page
+  // Step 1 — IADB home (establishes ASP.NET_SessionId for the /boeapps/ app)
   try {
-    const r = await fetch("https://www.bankofengland.co.uk/statistics/yield-curves",
+    const r = await fetch("https://www.bankofengland.co.uk/boeapps/database/",
       { headers: { ...BASE, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8" } });
     const c = collectSetCookies(r);
     addCookies(c);
     console.log(`[fetch-bonds] BoE step1: ${c.length} cookies — ${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
   } catch(e) { console.warn(`[fetch-bonds] BoE step1 failed: ${e.message}`); }
 
-  const IADB = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`;
+  // fromshowcolumns.asp — series-selection + CSV-download endpoint
+  const SERIES_URL = `https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?UsingCodes=Y&SeriesCodes=${codes}&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}`;
+  const CSV_URL    = SERIES_URL + "&csv.x=yes&CSVF=TT";
 
-  // Step 2 — probe IADB to collect its session cookie
+  // Step 2 — load series-selection page (stores series in session state)
   try {
-    const r = await fetch(IADB, {
-      headers: { ...BASE, "Accept": "text/html,*/*", "Referer": "https://www.bankofengland.co.uk/statistics/yield-curves", "Cookie": cookieHeader() },
+    const r = await fetch(SERIES_URL, {
+      headers: { ...BASE, "Accept": "text/html,*/*", "Referer": "https://www.bankofengland.co.uk/boeapps/database/", "Cookie": cookieHeader() },
     });
     const c = collectSetCookies(r);
     addCookies(c);
     const text = await r.text();
     console.log(`[fetch-bonds] BoE step2: status=${r.status} isHTML=${text.trimStart().startsWith("<")} +cookies=${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
-    // If step 2 already returned CSV, parse and return immediately
     if (!text.trimStart().startsWith("<")) {
       const result = parseBoECSV(text, "step2");
       if (result) return result;
     }
   } catch(e) { console.warn(`[fetch-bonds] BoE step2 failed: ${e.message}`); }
 
-  // Step 3 — final request with full accumulated cookie set
-  const HDRS = {
-    ...BASE,
-    "Accept":   "text/csv,text/plain,*/*",
-    "Referer":  "https://www.bankofengland.co.uk/statistics/yield-curves",
-    "Cookie":   cookieHeader(),
-  };
-  for (const url of [IADB, IADB + "&DAT=RNG"]) {
+  // Step 3 — CSV download with full accumulated cookie set
+  for (const url of [CSV_URL, CSV_URL + "&DAT=RNG"]) {
     let res;
-    try { res = await fetch(url, { headers: HDRS }); } catch(e) {
-      console.warn(`BoE step3 network error: ${e.message}`); continue;
-    }
+    try {
+      res = await fetch(url, {
+        headers: { ...BASE, "Accept": "text/csv,text/plain,*/*", "Referer": SERIES_URL, "Cookie": cookieHeader() },
+      });
+    } catch(e) { console.warn(`BoE step3 network error: ${e.message}`); continue; }
     if (!res.ok) { console.warn(`BoE step3: HTTP ${res.status}`); continue; }
     const text = await res.text();
     if (text.trimStart().startsWith("<")) {
@@ -605,13 +624,18 @@ exports.handler = async () => {
   } catch(e) { console.error("[fetch-bonds] Blob 'yield-curves' write failed:", e.message); }
 
   // ── 2. Bonds table (35 countries × 10Y) ──────────────────────────────────────
-  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD monthly → WGB → demo.
-  // Pre-fetch FRED country yields in parallel before the per-wave WGB loop so we
-  // don't make 15+ FRED calls inside the rate-limited WGB wave loop.
+  // Priority: curve 10Y (FRED/ECB/BoC/MoF) → FRED OECD monthly →
+  //           ECB IRS sovereign (Eurozone) → WGB scraping → demo.
+  // Pre-fetch secondary sources in parallel before the per-wave WGB loop.
   console.log("[fetch-bonds] Bonds table…");
-  const fredCountryYields = await fetchFredCountryYields(FRED_KEY).catch(() => ({}));
+  const [fredCountryYields, ecbCountryYields] = await Promise.all([
+    fetchFredCountryYields(FRED_KEY).catch(() => ({})),
+    fetchECBCountryYields().catch(() => ({})),
+  ]);
   const fredLiveCount = Object.keys(fredCountryYields).length;
   if (fredLiveCount > 0) console.log(`[fetch-bonds] FRED country 10Y: ${fredLiveCount} (${Object.keys(fredCountryYields).join(", ")})`);
+  const ecbLiveCount = Object.keys(ecbCountryYields).length;
+  if (ecbLiveCount > 0) console.log(`[fetch-bonds] ECB country 10Y: ${ecbLiveCount} (${Object.keys(ecbCountryYields).join(", ")})`);
 
   const bonds = []; let liveCount = 0;
   for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
@@ -620,7 +644,8 @@ exports.handler = async () => {
       BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;
         const fromFred  = fredCountryYields[c.code] ?? null;
-        const live = fromCurve ?? fromFred ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        const fromECB   = ecbCountryYields[c.code] ?? null;
+        const live = fromCurve ?? fromFred ?? fromECB ?? await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
         return {

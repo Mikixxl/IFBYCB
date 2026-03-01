@@ -20,7 +20,7 @@
 //   UK, CA, JP, CN, AU, NZ, CH, SE, NO → WGB central-bank-rates/ page
 //
 // Bonds table (35 countries, 10Y only):
-//   curve 10Y → FRED OECD → ECB IRS sovereign (AT,BE,GR,NL,PT) → WGB → demo
+//   curve 10Y → FRED OECD (24 countries incl. AT,BE,GR,NL,PT) → WGB → demo
 //
 // Stored blobs in "bonds-cache":
 //   "latest"        → bonds table
@@ -148,6 +148,9 @@ const FRED_COUNTRY_10Y = {
   HU:"IRLTLT01HUM156N", MX:"IRLTLT01MXM156N", IL:"IRLTLT01ILM156N",
   ZA:"IRLTLT01ZAM156N", BR:"IRLTLT01BRM156N", TR:"IRLTLT01TRM156N",
   IN:"IRLTLT01INM156N",
+  // Eurozone — all OECD members with OECD Main Economic Indicators series in FRED
+  NL:"IRLTLT01NLM156N", AT:"IRLTLT01ATM156N", BE:"IRLTLT01BEM156N",
+  PT:"IRLTLT01PTM156N", GR:"IRLTLT01GRM156N",
 };
 
 async function fetchFredCountryYields(apiKey) {
@@ -228,26 +231,6 @@ async function fetchECBRate() {
     "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.DFR.LEV?lastNObservations=5&format=jsondata"
   );
   return parseEcbValue(json);
-}
-
-// ─── ECB SDMX IRS dataset — individual Eurozone sovereign 10Y yields ──────────
-// ECB publishes Maastricht criterion long-term interest rates (10Y sovereign
-// bond yields) for all Eurozone countries.  No API key required.
-// Covers: AT, BE, DE, ES, FR, GR, IT, NL, PT (and more)
-const ECB_COUNTRY_10Y_AREAS = ["AT","BE","GR","NL","PT"];
-
-async function fetchECBCountryYields() {
-  const results = {};
-  await Promise.allSettled(
-    ECB_COUNTRY_10Y_AREAS.map(async area => {
-      const json = await getJson(
-        `https://data-api.ecb.europa.eu/service/data/IRS/M.${area}.L.L40.CI.0.EUR.N.Z?lastNObservations=5&format=jsondata`
-      ).catch(() => null);
-      const val = json ? parseEcbValue(json) : null;
-      if (val !== null) results[area] = val;
-    })
-  );
-  return results;
 }
 
 // ─── Bank of Canada Valet API (CA yield curve) ────────────────────────────────
@@ -361,9 +344,11 @@ async function fetchBoECurve() {
     console.log(`[fetch-bonds] BoE step1: ${c.length} cookies — ${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
   } catch(e) { console.warn(`[fetch-bonds] BoE step1 failed: ${e.message}`); }
 
-  // fromshowcolumns.asp — series-selection + CSV-download endpoint
+  // fromshowcolumns.asp — web display page; visiting it loads the series into
+  // server-side session state so the subsequent _iadb download handler can serve CSV.
   const SERIES_URL = `https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?UsingCodes=Y&SeriesCodes=${codes}&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}`;
-  const CSV_URL    = SERIES_URL + "&csv.x=yes&CSVF=TT";
+  // _iadb-FromShowColumns.asp is the actual CSV-download handler used by the BoE website.
+  const IADB_CSV   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&SeriesCodes=${codes}&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}`;
 
   // Step 2 — load series-selection page (stores series in session state)
   try {
@@ -380,8 +365,8 @@ async function fetchBoECurve() {
     }
   } catch(e) { console.warn(`[fetch-bonds] BoE step2 failed: ${e.message}`); }
 
-  // Step 3 — CSV download with full accumulated cookie set
-  for (const url of [CSV_URL, CSV_URL + "&DAT=RNG"]) {
+  // Step 3 — CSV download via the _iadb handler with full accumulated cookie set
+  for (const url of [IADB_CSV, IADB_CSV + "&DAT=RNG"]) {
     let res;
     try {
       res = await fetch(url, {
@@ -628,14 +613,9 @@ exports.handler = async () => {
   //           ECB IRS sovereign (Eurozone) → WGB scraping → demo.
   // Pre-fetch secondary sources in parallel before the per-wave WGB loop.
   console.log("[fetch-bonds] Bonds table…");
-  const [fredCountryYields, ecbCountryYields] = await Promise.all([
-    fetchFredCountryYields(FRED_KEY).catch(() => ({})),
-    fetchECBCountryYields().catch(() => ({})),
-  ]);
+  const fredCountryYields = await fetchFredCountryYields(FRED_KEY).catch(() => ({}));
   const fredLiveCount = Object.keys(fredCountryYields).length;
   if (fredLiveCount > 0) console.log(`[fetch-bonds] FRED country 10Y: ${fredLiveCount} (${Object.keys(fredCountryYields).join(", ")})`);
-  const ecbLiveCount = Object.keys(ecbCountryYields).length;
-  if (ecbLiveCount > 0) console.log(`[fetch-bonds] ECB country 10Y: ${ecbLiveCount} (${Object.keys(ecbCountryYields).join(", ")})`);
 
   const bonds = []; let liveCount = 0;
   for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
@@ -644,8 +624,7 @@ exports.handler = async () => {
       BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
         const fromCurve = curves[c.code]?.["10Y"] ?? null;
         const fromFred  = fredCountryYields[c.code] ?? null;
-        const fromECB   = ecbCountryYields[c.code] ?? null;
-        const live = fromCurve ?? fromFred ?? fromECB ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        const live = fromCurve ?? fromFred ?? await scrapeWGB10Y(c.slug).catch(() => null);
         if (live !== null) liveCount++;
         const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
         return {

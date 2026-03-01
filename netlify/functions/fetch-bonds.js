@@ -198,9 +198,10 @@ const BOC_TENORS = {
 };
 
 async function fetchBoCCurve() {
-  const s = Object.values(BOC_TENORS).join(",");
+  // Use the official benchmark bond group endpoint — avoids 404 when any
+  // individual series code is missing (e.g. short-tenor T-bill codes).
   const data = await getJson(
-    `https://www.bankofcanada.ca/valet/observations/${s}/json?recent=10&order_dir=desc`
+    "https://www.bankofcanada.ca/valet/observations/group/bond_yields_benchmark/json?recent=10&order_dir=desc"
   );
   // Iterate from most-recent; skip observations that have no data (weekends/holidays)
   for (const obs of data.observations ?? []) {
@@ -249,10 +250,20 @@ const BOE_TENORS = {
 };
 
 async function fetchBoECurve() {
-  const year  = new Date().getFullYear();
+  const now   = new Date();
   const codes = Object.values(BOE_TENORS).join(",");
-  const url   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp` +
-                `?csv.x=yes&Datefrom=01/Jan/${year}&SeriesCodes=${codes}&UsingCodes=Y&CSVF=TT`;
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  // Use FD/FM/FY & TD/TM/TY form — same parameters the BoE database UI generates
+  // and that match their live export path better than the Datefrom= variant.
+  // Fetch from 3 months ago to today to ensure recent data even around holidays.
+  const from  = new Date(now); from.setMonth(now.getMonth() - 3);
+  const params = [
+    "csv.x=yes","CSVF=TT","UsingCodes=Y",
+    `FD=${from.getDate()}`,`FM=${MONTHS[from.getMonth()]}`,`FY=${from.getFullYear()}`,
+    `TD=${now.getDate()}`,`TM=${MONTHS[now.getMonth()]}`,`TY=${now.getFullYear()}`,
+    `SeriesCodes=${codes}`,
+  ].join("&");
+  const url   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?${params}`;
   // Use CSV-specific headers — getHtml sends Accept:text/html which triggers an HTML response
   const res = await fetch(url, {
     headers: {

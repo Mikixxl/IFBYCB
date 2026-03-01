@@ -250,20 +250,25 @@ const BOE_TENORS = {
 };
 
 async function fetchBoECurve() {
-  const now   = new Date();
-  const codes = Object.values(BOE_TENORS).join(",");
+  const now    = new Date();
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  // Use FD/FM/FY & TD/TM/TY form — same parameters the BoE database UI generates
-  // and that match their live export path better than the Datefrom= variant.
-  // Fetch from 3 months ago to today to ensure recent data even around holidays.
-  const from  = new Date(now); from.setMonth(now.getMonth() - 3);
+  // Use the exact URL/parameter format the BoE Statistics database UI generates
+  // for its own CSV export links (path /a-mdahd/Results, series as repeated C=
+  // params, Travel/VFD/Filter flags).  The _iadb-FromShowColumns.asp path with
+  // SeriesCodes= is an older form that now often returns HTML.
+  const from   = new Date(now); from.setMonth(now.getMonth() - 3);
+  const cParam = Object.values(BOE_TENORS).map(c => `C=${c}`).join("&");
   const params = [
-    "csv.x=yes","CSVF=TT","UsingCodes=Y",
+    "csv.x=yes","CSVF=TT",
+    "Travel=NIxRSxSUx","FromSeries=1","ToSeries=50",
+    "DAT=RNG",
     `FD=${from.getDate()}`,`FM=${MONTHS[from.getMonth()]}`,`FY=${from.getFullYear()}`,
     `TD=${now.getDate()}`,`TM=${MONTHS[now.getMonth()]}`,`TY=${now.getFullYear()}`,
-    `SeriesCodes=${codes}`,
+    "VFD=Y","html.x=0","html.y=0",
+    cParam,
+    "Filter=N",
   ].join("&");
-  const url   = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?${params}`;
+  const url    = `https://www.bankofengland.co.uk/boeapps/database/a-mdahd/Results?${params}`;
   // Use CSV-specific headers — getHtml sends Accept:text/html which triggers an HTML response
   const res = await fetch(url, {
     headers: {
@@ -277,9 +282,12 @@ async function fetchBoECurve() {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
+  // Guard: BoE sometimes returns HTML (200 OK) when Cloudflare or the server
+  // rejects the request — detect this before trying to parse as CSV.
+  if (text.trimStart().startsWith("<")) throw new Error("BoE returned HTML (blocked or redirected)");
   const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
   const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
-  if (hIdx < 0) return null;
+  if (hIdx < 0) throw new Error("BoE CSV header not found");
   const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
   const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
   const latest   = dataRows[dataRows.length - 1];
@@ -417,37 +425,7 @@ exports.handler = async () => {
   const FRED_KEY = process.env.FRED_API_KEY || "";
   const asOf     = todayISO();
 
-  // ── 1. Bonds table (35 countries × 10Y) ──────────────────────────────────────
-  console.log("[fetch-bonds] Bonds table…");
-  const bonds = []; let liveCount = 0;
-  for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
-    if (i > 0) await sleep(800 + Math.floor(Math.random() * 600));
-    const wave = await Promise.all(
-      BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
-        const live = await scrapeWGB10Y(c.slug).catch(() => null);
-        if (live !== null) liveCount++;
-        const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
-        return {
-          code:c.code, name: YC_META[c.code]?.name ?? c.code,
-          flag:c.flag, region:c.region, rating:c.rating,
-          yield10y: live ?? DEMO_YIELD[c.code] ?? 4.0,
-          change1d:chg[0], change1w:chg[1], change1m:chg[2], change6m:chg[3], change1y:chg[4],
-          src: live !== null ? "live" : "demo",
-        };
-      })
-    );
-    bonds.push(...wave);
-  }
-  console.log(`[fetch-bonds] Table: ${liveCount}/${bonds.length} live`);
-  try {
-    await store.setJSON("latest", {
-      asOf, fetchedAt: new Date().toISOString(), bonds, liveCount,
-      totalCount: bonds.length,
-      src: liveCount > bonds.length / 2 ? "mostly-live" : "mostly-demo",
-    });
-  } catch(e) { console.error("[fetch-bonds] Blob 'latest' write failed:", e.message); }
-
-  // ── 2. Yield curves (live only — failed countries are omitted entirely) ───────
+  // ── 1. Yield curves (fetched first so bonds table can reuse 10Y values) ────────
   console.log("[fetch-bonds] Yield curves…");
   const curves = {};
 
@@ -523,6 +501,40 @@ exports.handler = async () => {
   try {
     await store.setJSON("yield-curves", { asOf, tenors: TENORS, countries: ycCountries, curves });
   } catch(e) { console.error("[fetch-bonds] Blob 'yield-curves' write failed:", e.message); }
+
+  // ── 2. Bonds table (35 countries × 10Y) ──────────────────────────────────────
+  // Priority: official-API 10Y (from curves already fetched above) → WGB scrape → demo.
+  // This ensures countries with official APIs (US/DE/CA/JP/GB) always show live
+  // data in the table even when WGB is blocked by Cloudflare.
+  console.log("[fetch-bonds] Bonds table…");
+  const bonds = []; let liveCount = 0;
+  for (let i = 0; i < BONDS_COUNTRIES.length; i += 3) {
+    if (i > 0) await sleep(800 + Math.floor(Math.random() * 600));
+    const wave = await Promise.all(
+      BONDS_COUNTRIES.slice(i, i + 3).map(async c => {
+        const fromCurve = curves[c.code]?.["10Y"] ?? null;
+        const live = fromCurve ?? await scrapeWGB10Y(c.slug).catch(() => null);
+        if (live !== null) liveCount++;
+        const chg = DEMO_CHG[c.code] ?? [0,0,0,0,0];
+        return {
+          code:c.code, name: YC_META[c.code]?.name ?? c.code,
+          flag:c.flag, region:c.region, rating:c.rating,
+          yield10y: live ?? DEMO_YIELD[c.code] ?? 4.0,
+          change1d:chg[0], change1w:chg[1], change1m:chg[2], change6m:chg[3], change1y:chg[4],
+          src: live !== null ? "live" : "demo",
+        };
+      })
+    );
+    bonds.push(...wave);
+  }
+  console.log(`[fetch-bonds] Table: ${liveCount}/${bonds.length} live`);
+  try {
+    await store.setJSON("latest", {
+      asOf, fetchedAt: new Date().toISOString(), bonds, liveCount,
+      totalCount: bonds.length,
+      src: liveCount > bonds.length / 2 ? "mostly-live" : "mostly-demo",
+    });
+  } catch(e) { console.error("[fetch-bonds] Blob 'latest' write failed:", e.message); }
 
   // ── 3. Central bank rates ─────────────────────────────────────────────────────
   console.log("[fetch-bonds] Central bank rates…");

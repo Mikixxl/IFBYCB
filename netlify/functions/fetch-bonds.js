@@ -89,19 +89,36 @@ async function scrapeWGBCurve(slug) {
   }
   const $ = cheerio.load(html);
   const tenors = {};
-  $("table tbody tr").each((_, row) => {
+
+  // Helper: try to parse a row — first cell must be a tenor label, second a yield number
+  const tryRow = (row) => {
     const cells = $(row).find("td");
+    if (cells.length < 2) return;
     const label = $(cells[0]).text().trim();
     const code  = Object.keys(TENOR_LABEL).find(
       k => TENOR_LABEL[k].toLowerCase() === label.toLowerCase()
     );
-    if (code) {
+    if (code && !tenors[code]) {
       const m = $(cells[1]).text().trim().match(/(\d+[.,]\d+)/);
       if (m) tenors[code] = parseFloat(m[1].replace(",", "."));
     }
-  });
-  // Require at least 4 tenors to consider scrape successful
-  return Object.keys(tenors).length >= 4 ? tenors : null;
+  };
+
+  // Selector A: standard tbody rows
+  $("table tbody tr").each((_, row) => tryRow(row));
+
+  // Selector B: tables without explicit tbody (browser adds one, but raw HTML may not)
+  if (Object.keys(tenors).length < 4) {
+    $("table tr").each((_, row) => tryRow(row));
+  }
+
+  const count = Object.keys(tenors).length;
+  if (count < 4) {
+    // Log page start to diagnose structural changes (e.g. WGB redesign)
+    console.warn(`WGB ${slug}: ${count} tenors — HTML start: ${html.replace(/\s+/g, " ").slice(0, 300)}`);
+    return null;
+  }
+  return tenors;
 }
 
 async function scrapeWGB10Y(slug) {
@@ -274,6 +291,17 @@ const BOE_TENORS = {
   "7Y":"IUDMNY7","10Y":"IUDMNY10","20Y":"IUDMNY20",
 };
 
+// Collect Set-Cookie headers from a fetch Response into an array of "name=value" strings.
+function collectSetCookies(res) {
+  const raw = typeof res.headers.getSetCookie === "function"
+    ? res.headers.getSetCookie()
+    : [res.headers.get("set-cookie") || ""];
+  return raw
+    .flatMap(h => h.split(/,(?=[^ ]/))  // naively split combined Set-Cookie header
+    .map(c => c.split(";")[0].trim()))
+    .filter(Boolean);
+}
+
 async function fetchBoECurve() {
   const now    = new Date();
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -282,87 +310,100 @@ async function fetchBoECurve() {
   const fromD  = from.getDate(), fromM = MONTHS[from.getMonth()], fromY = from.getFullYear();
   const toD    = now.getDate(),  toM   = MONTHS[now.getMonth()],  toY   = now.getFullYear();
 
-  // BoE's IADB endpoint returns its own cookie-consent / session page when hit
-  // cold (without a valid session cookie).  The fix: first GET the statistics
-  // landing page so the server sets a session cookie, then re-use that cookie
-  // on the actual CSV download request.  This mimics what a browser does.
-  const BASE_HDRS = {
+  const BASE = {
     "User-Agent":      UA,
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control":   "no-cache",
   };
 
-  let sessionCookies = "";
+  // BoE's IADB requires a live ASP.NET session to serve CSV.  A cold request
+  // returns the BoE website's session/consent HTML.  We use a three-step chain:
+  //   1. GET statistics landing page → collects BoE main-site session cookies
+  //   2. GET IADB URL with those cookies → IADB sets its own session cookie
+  //      (even if it still returns HTML, we collect its Set-Cookie)
+  //   3. GET IADB URL with ALL accumulated cookies → should now return CSV
+  // Each step's cookies are merged into a single map (later values win).
+  const cookieMap = {};
+  const addCookies = arr => arr.forEach(c => {
+    const k = c.split("=")[0].trim();
+    if (k) cookieMap[k] = c;
+  });
+  const cookieHeader = () => Object.values(cookieMap).join("; ");
+
+  // Step 1 — stats landing page
   try {
-    const statsRes = await fetch(
-      "https://www.bankofengland.co.uk/statistics/yield-curves",
-      { headers: { ...BASE_HDRS, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8" } }
-    );
-    // Node 18 fetch exposes getSetCookie(); older impls fall back to get("set-cookie").
-    const raw = typeof statsRes.headers.getSetCookie === "function"
-      ? statsRes.headers.getSetCookie()
-      : [statsRes.headers.get("set-cookie") || ""];
-    sessionCookies = raw
-      .flatMap(h => h.split(/,(?=[^ ])/))   // split multi-value header naively
-      .map(c => c.split(";")[0].trim())      // take name=value only
-      .filter(Boolean)
-      .join("; ");
-    console.log(`[fetch-bonds] BoE session: ${sessionCookies ? "cookies obtained" : "no cookies set"}`);
-  } catch(e) {
-    console.warn(`[fetch-bonds] BoE stats-page pre-fetch failed: ${e.message}`);
-  }
+    const r = await fetch("https://www.bankofengland.co.uk/statistics/yield-curves",
+      { headers: { ...BASE, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8" } });
+    const c = collectSetCookies(r);
+    addCookies(c);
+    console.log(`[fetch-bonds] BoE step1: ${c.length} cookies — ${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
+  } catch(e) { console.warn(`[fetch-bonds] BoE step1 failed: ${e.message}`); }
 
-  const HDRS = {
-    ...BASE_HDRS,
-    "Accept":          "text/csv,text/plain,*/*",
-    "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
-    ...(sessionCookies ? { "Cookie": sessionCookies } : {}),
-  };
+  const IADB = `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`;
 
-  // Two URL formats — both use the original SeriesCodes= + UsingCodes=Y pattern.
-  // A: explicit date range (3 months back) — original working format.
-  // B: same with DAT=RNG param in case the server requires it explicitly.
-  const URLS = [
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=RNG&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
-  ];
-
-  for (let i = 0; i < URLS.length; i++) {
-    let res;
-    try { res = await fetch(URLS[i], { headers: HDRS }); } catch(e) {
-      console.warn(`BoE URL${i+1}: network error — ${e.message}`); continue;
+  // Step 2 — probe IADB to collect its session cookie
+  try {
+    const r = await fetch(IADB, {
+      headers: { ...BASE, "Accept": "text/html,*/*", "Referer": "https://www.bankofengland.co.uk/statistics/yield-curves", "Cookie": cookieHeader() },
+    });
+    const c = collectSetCookies(r);
+    addCookies(c);
+    const text = await r.text();
+    console.log(`[fetch-bonds] BoE step2: status=${r.status} isHTML=${text.trimStart().startsWith("<")} +cookies=${c.map(x => x.split("=")[0]).join(", ") || "none"}`);
+    // If step 2 already returned CSV, parse and return immediately
+    if (!text.trimStart().startsWith("<")) {
+      const result = parseBoECSV(text, "step2");
+      if (result) return result;
     }
-    if (!res.ok) { console.warn(`BoE URL${i+1}: HTTP ${res.status}`); continue; }
+  } catch(e) { console.warn(`[fetch-bonds] BoE step2 failed: ${e.message}`); }
+
+  // Step 3 — final request with full accumulated cookie set
+  const HDRS = {
+    ...BASE,
+    "Accept":   "text/csv,text/plain,*/*",
+    "Referer":  "https://www.bankofengland.co.uk/statistics/yield-curves",
+    "Cookie":   cookieHeader(),
+  };
+  for (const url of [IADB, IADB + "&DAT=RNG"]) {
+    let res;
+    try { res = await fetch(url, { headers: HDRS }); } catch(e) {
+      console.warn(`BoE step3 network error: ${e.message}`); continue;
+    }
+    if (!res.ok) { console.warn(`BoE step3: HTTP ${res.status}`); continue; }
     const text = await res.text();
     if (text.trimStart().startsWith("<")) {
-      const snippet = text.replace(/\s+/g, " ").slice(0, 300);
-      console.warn(`BoE URL${i+1}: returned HTML — ${snippet}`);
+      console.warn(`BoE step3: still HTML — ${text.replace(/\s+/g, " ").slice(0, 300)}`);
       continue;
     }
-    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-    const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
-    if (hIdx < 0) {
-      const snippet = text.replace(/\s+/g, " ").slice(0, 300);
-      console.warn(`BoE URL${i+1}: CSV header not found — response start: ${snippet}`);
-      continue;
-    }
-    const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
-    const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
-    const latest   = dataRows[dataRows.length - 1];
-    if (!latest) { console.warn(`BoE URL${i+1}: no data rows`); continue; }
-    const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
-    const tenors = {};
-    for (const [tenor, code] of Object.entries(BOE_TENORS)) {
-      const idx = headers.indexOf(code);
-      if (idx >= 0 && vals[idx] && vals[idx] !== "n/a" && vals[idx] !== "" && vals[idx] !== "..") {
-        const v = parseFloat(vals[idx]);
-        if (!isNaN(v)) tenors[tenor] = v;
-      }
-    }
-    if (Object.keys(tenors).length >= 4) return tenors;
-    console.warn(`BoE URL${i+1}: too few tenors (${Object.keys(tenors).length})`);
+    const result = parseBoECSV(text, "step3");
+    if (result) return result;
   }
   throw new Error("all BoE URL formats failed");
+}
+
+function parseBoECSV(text, label) {
+  const lines   = text.trim().split(/\r?\n/).filter(l => l.trim());
+  const hIdx    = lines.findIndex(l => /IUDM/i.test(l));
+  if (hIdx < 0) {
+    console.warn(`BoE ${label}: no IUDM header — start: ${text.replace(/\s+/g, " ").slice(0, 200)}`);
+    return null;
+  }
+  const headers  = lines[hIdx].split(",").map(h => h.replace(/"/g, "").trim());
+  const dataRows = lines.slice(hIdx + 1).filter(l => l.trim() && !/^[\s,]*$/.test(l));
+  const latest   = dataRows[dataRows.length - 1];
+  if (!latest) { console.warn(`BoE ${label}: no data rows`); return null; }
+  const vals = latest.split(",").map(v => v.replace(/"/g, "").trim());
+  const tenors = {};
+  for (const [tenor, code] of Object.entries(BOE_TENORS)) {
+    const idx = headers.indexOf(code);
+    if (idx >= 0 && vals[idx] && vals[idx] !== "n/a" && vals[idx] !== "" && vals[idx] !== "..") {
+      const v = parseFloat(vals[idx]);
+      if (!isNaN(v)) tenors[tenor] = v;
+    }
+  }
+  if (Object.keys(tenors).length >= 4) return tenors;
+  console.warn(`BoE ${label}: only ${Object.keys(tenors).length} tenors`);
+  return null;
 }
 
 // ─── WGB central-bank-rates page ─────────────────────────────────────────────

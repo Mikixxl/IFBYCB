@@ -279,35 +279,53 @@ async function fetchBoECurve() {
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const from   = new Date(now); from.setMonth(now.getMonth() - 3);
   const codes  = Object.values(BOE_TENORS).join(",");
-  const cParam = Object.values(BOE_TENORS).map(c => `C=${c}`).join("&");
   const fromD  = from.getDate(), fromM = MONTHS[from.getMonth()], fromY = from.getFullYear();
   const toD    = now.getDate(),  toM   = MONTHS[now.getMonth()],  toY   = now.getFullYear();
 
-  // Three URL formats to try in order.
-  // A: C= per-series params with DAT=RNG but NO Travel (Travel=NIxRSxSUx was
-  //    navigating to the wrong database section, returning unrelated CSV data).
-  // B: SeriesCodes= + UsingCodes=Y with date range — the original working format
-  //    (DAT=NOM was triggering an interactive HTML page; explicit dates avoid that).
-  // C: Same as B but with a one-month shorter range in case the server dislikes
-  //    wide date ranges for these series.
-  const from2 = new Date(now); from2.setMonth(now.getMonth() - 1);
-  const f2D = from2.getDate(), f2M = MONTHS[from2.getMonth()], f2Y = from2.getFullYear();
-
-  const URLS = [
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=RNG&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&${cParam}`,
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
-    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${f2D}&FM=${f2M}&FY=${f2Y}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
-  ];
-  // Include OneTrust consent cookie — BoE uses OneTrust CMP; this cookie signals
-  // the user has acknowledged the consent banner and avoids the cookie-wall redirect.
-  const HDRS = {
+  // BoE's IADB endpoint returns its own cookie-consent / session page when hit
+  // cold (without a valid session cookie).  The fix: first GET the statistics
+  // landing page so the server sets a session cookie, then re-use that cookie
+  // on the actual CSV download request.  This mimics what a browser does.
+  const BASE_HDRS = {
     "User-Agent":      UA,
-    "Accept":          "text/csv,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
     "Cache-Control":   "no-cache",
-    "Cookie":          "OptanonAlertBoxClosed=2025-01-01T00%3A00%3A00.000Z; OptanonConsent=isGpcEnabled%3D0%26interactionCount%3D1%26groups%3DC0001%3A1%2CC0002%3A1%2CC0003%3A1",
   };
+
+  let sessionCookies = "";
+  try {
+    const statsRes = await fetch(
+      "https://www.bankofengland.co.uk/statistics/yield-curves",
+      { headers: { ...BASE_HDRS, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8" } }
+    );
+    // Node 18 fetch exposes getSetCookie(); older impls fall back to get("set-cookie").
+    const raw = typeof statsRes.headers.getSetCookie === "function"
+      ? statsRes.headers.getSetCookie()
+      : [statsRes.headers.get("set-cookie") || ""];
+    sessionCookies = raw
+      .flatMap(h => h.split(/,(?=[^ ])/))   // split multi-value header naively
+      .map(c => c.split(";")[0].trim())      // take name=value only
+      .filter(Boolean)
+      .join("; ");
+    console.log(`[fetch-bonds] BoE session: ${sessionCookies ? "cookies obtained" : "no cookies set"}`);
+  } catch(e) {
+    console.warn(`[fetch-bonds] BoE stats-page pre-fetch failed: ${e.message}`);
+  }
+
+  const HDRS = {
+    ...BASE_HDRS,
+    "Accept":          "text/csv,text/plain,*/*",
+    "Referer":         "https://www.bankofengland.co.uk/statistics/yield-curves",
+    ...(sessionCookies ? { "Cookie": sessionCookies } : {}),
+  };
+
+  // Two URL formats — both use the original SeriesCodes= + UsingCodes=Y pattern.
+  // A: explicit date range (3 months back) — original working format.
+  // B: same with DAT=RNG param in case the server requires it explicitly.
+  const URLS = [
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?csv.x=yes&CSVF=TT&UsingCodes=Y&DAT=RNG&FD=${fromD}&FM=${fromM}&FY=${fromY}&TD=${toD}&TM=${toM}&TY=${toY}&SeriesCodes=${codes}`,
+  ];
 
   for (let i = 0; i < URLS.length; i++) {
     let res;
@@ -317,16 +335,14 @@ async function fetchBoECurve() {
     if (!res.ok) { console.warn(`BoE URL${i+1}: HTTP ${res.status}`); continue; }
     const text = await res.text();
     if (text.trimStart().startsWith("<")) {
-      // Log the start of the HTML to identify whether it is a Cloudflare challenge,
-      // cookie-consent wall, or BoE error page — helps diagnose future failures.
-      const snippet = text.replace(/\s+/g, " ").slice(0, 250);
+      const snippet = text.replace(/\s+/g, " ").slice(0, 300);
       console.warn(`BoE URL${i+1}: returned HTML — ${snippet}`);
       continue;
     }
     const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
     const hIdx  = lines.findIndex(l => /IUDM/i.test(l));
     if (hIdx < 0) {
-      const snippet = text.replace(/\s+/g, " ").slice(0, 250);
+      const snippet = text.replace(/\s+/g, " ").slice(0, 300);
       console.warn(`BoE URL${i+1}: CSV header not found — response start: ${snippet}`);
       continue;
     }
@@ -479,13 +495,13 @@ exports.handler = async () => {
     const fred = await fetchUSCurveFRED(FRED_KEY).catch(e => { console.warn("FRED curve:", e.message); return null; });
     if (fred) { curves.US = fred; console.log("[fetch-bonds] US: FRED ✓"); }
     else {
-      const wgb = await scrapeWGBCurve("united-states").catch(() => null);
+      const wgb = await scrapeWGBCurve("united-states").catch(e => { console.warn("[fetch-bonds] US WGB:", e.message); return null; });
       if (wgb) { curves.US = wgb; console.log("[fetch-bonds] US: WGB fallback ✓"); }
       else console.warn("[fetch-bonds] US: all sources failed — excluded from yield curve");
     }
   } else {
     console.log("[fetch-bonds] FRED_API_KEY not set — using WGB for US");
-    const wgb = await scrapeWGBCurve("united-states").catch(() => null);
+    const wgb = await scrapeWGBCurve("united-states").catch(e => { console.warn("[fetch-bonds] US WGB:", e.message); return null; });
     if (wgb) { curves.US = wgb; console.log("[fetch-bonds] US: WGB ✓"); }
     else console.warn("[fetch-bonds] US: WGB failed — excluded");
   }
@@ -494,7 +510,7 @@ exports.handler = async () => {
   const ecbCurve = await fetchECBCurve().catch(e => { console.warn("ECB curve:", e.message); return null; });
   if (ecbCurve) { curves.DE = ecbCurve; console.log("[fetch-bonds] DE: ECB ✓"); }
   else {
-    const wgb = await scrapeWGBCurve("germany").catch(() => null);
+    const wgb = await scrapeWGBCurve("germany").catch(e => { console.warn("[fetch-bonds] DE WGB:", e.message); return null; });
     if (wgb) { curves.DE = wgb; console.log("[fetch-bonds] DE: WGB fallback ✓"); }
     else console.warn("[fetch-bonds] DE: all sources failed — excluded");
   }
@@ -503,7 +519,7 @@ exports.handler = async () => {
   const boeCurve = await fetchBoECurve().catch(e => { console.warn("BoE:", e.message); return null; });
   if (boeCurve) { curves.GB = boeCurve; console.log("[fetch-bonds] GB: BoE ✓"); }
   else {
-    const wgb = await scrapeWGBCurve("united-kingdom").catch(() => null);
+    const wgb = await scrapeWGBCurve("united-kingdom").catch(e => { console.warn("[fetch-bonds] GB WGB:", e.message); return null; });
     if (wgb) { curves.GB = wgb; console.log("[fetch-bonds] GB: WGB fallback ✓"); }
     else console.warn("[fetch-bonds] GB: all sources failed — excluded");
   }
@@ -512,7 +528,7 @@ exports.handler = async () => {
   const bocCurve = await fetchBoCCurve().catch(e => { console.warn("BoC:", e.message); return null; });
   if (bocCurve) { curves.CA = bocCurve; console.log("[fetch-bonds] CA: BoC ✓"); }
   else {
-    const wgb = await scrapeWGBCurve("canada").catch(() => null);
+    const wgb = await scrapeWGBCurve("canada").catch(e => { console.warn("[fetch-bonds] CA WGB:", e.message); return null; });
     if (wgb) { curves.CA = wgb; console.log("[fetch-bonds] CA: WGB fallback ✓"); }
     else console.warn("[fetch-bonds] CA: all sources failed — excluded");
   }
@@ -521,7 +537,7 @@ exports.handler = async () => {
   const mofCurve = await fetchMoFJapanCurve().catch(e => { console.warn("MoF:", e.message); return null; });
   if (mofCurve) { curves.JP = mofCurve; console.log("[fetch-bonds] JP: MoF ✓"); }
   else {
-    const wgb = await scrapeWGBCurve("japan").catch(() => null);
+    const wgb = await scrapeWGBCurve("japan").catch(e => { console.warn("[fetch-bonds] JP WGB:", e.message); return null; });
     if (wgb) { curves.JP = wgb; console.log("[fetch-bonds] JP: WGB fallback ✓"); }
     else console.warn("[fetch-bonds] JP: all sources failed — excluded");
   }
@@ -532,7 +548,7 @@ exports.handler = async () => {
     { code:"IT", slug:"italy" },
     { code:"CN", slug:"china" },
   ].map(async ({ code, slug }) => {
-    const c = await scrapeWGBCurve(slug).catch(() => null);
+    const c = await scrapeWGBCurve(slug).catch(e => { console.warn(`[fetch-bonds] ${code} WGB: ${e.message}`); return null; });
     if (c) { curves[code] = c; console.log(`[fetch-bonds] ${code}: WGB ✓`); }
     else console.warn(`[fetch-bonds] ${code}: WGB failed — excluded from yield curve`);
   }));

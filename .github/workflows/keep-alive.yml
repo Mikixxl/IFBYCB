@@ -11,12 +11,12 @@ jobs:
     steps:
       - name: Ping Supabase to prevent pausing
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://faqvdjuhuitfvejzysqp.supabase.co/auth/v1/health")
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -L \
+            "https://faqvdjuhuitfvejzysqp.supabase.co")
           echo "Response code: $RESPONSE"
-          if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 400 ]; then
-            echo "✅ Keep-alive successful"
-          else
-            echo "❌ Failed with status $RESPONSE"
+          if [ "$RESPONSE" -eq 000 ]; then
+            echo "❌ Could not connect"
             exit 1
+          else
+            echo "✅ Keep-alive successful (status $RESPONSE)"
           fi

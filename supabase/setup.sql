@@ -1,3 +1,11 @@
+-- Drop existing tables cleanly (safe since no real data exists yet)
+DROP TABLE IF EXISTS public.caldav_accounts CASCADE;
+DROP TABLE IF EXISTS public.chat_messages CASCADE;
+DROP TABLE IF EXISTS public.tasks CASCADE;
+DROP TABLE IF EXISTS public.project_members CASCADE;
+DROP TABLE IF EXISTS public.projects CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS public.profiles (

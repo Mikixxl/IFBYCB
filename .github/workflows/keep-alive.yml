@@ -1,0 +1,23 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 6 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to prevent pausing
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://faqvdjuhuitfvejzysqp.supabase.co/rest/v1/" \
+            -H "apikey: sb_publishable_rovhTHgT-rvdiqI4NFoo7w_Gjjawx-y" \
+            -H "Authorization: Bearer sb_publishable_rovhTHgT-rvdiqI4NFoo7w_Gjjawx-y")
+          if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 400 ]; then
+            echo "✅ Keep-alive successful"
+          else
+            echo "❌ Failed with status $RESPONSE"
+            exit 1
+          fi

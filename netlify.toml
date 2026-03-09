@@ -7,8 +7,14 @@
   [headers.values]
   Cache-Control = "public, max-age=0, must-revalidate"
 
-# Uncomment this block only if you use client-side routing and want SPA fallback
+# Route /api/* to Netlify Functions (must be before SPA fallback)
 [[redirects]]
-  from = "/*"  
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA fallback — serves index.html for unknown paths
+[[redirects]]
+  from = "/*"
   to = "/index.html"
-  status = 200[build]
+  status = 200

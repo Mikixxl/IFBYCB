@@ -3,49 +3,171 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
+  <title>SWIFT Transfer Tracker — PACS.008 / MT103</title>
   <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="tracker-page">
+
+  <!-- ── Top navigation ─────────────────────────────────────────────────── -->
   <nav class="topnav">
     <a href="index.html" class="topnav-logo-link"><img src="IMG_0311.png" alt="IFB" class="topnav-logo"/></a>
     <span class="topnav-brand">IFB Finance Tools</span>
-    <a href="index.html" class="active">Yield Curve</a>
-    <a href="swift-tracker.html">SWIFT Tracker</a>
+    <a href="index.html" class="active">SWIFT Tracker</a>
   </nav>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
 
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+  <!-- ── Main layout ────────────────────────────────────────────────────── -->
+  <div class="tracker-layout">
+
+    <!-- ── Search panel ───────────────────────────────────────────────── -->
+    <aside class="tracker-sidebar">
+      <h2 class="sidebar-title">SWIFT Transfer Tracker</h2>
+      <p class="sidebar-desc">Track PACS.008 / MT103 payments by UETR or sender details.</p>
+
+      <!-- Tab switcher -->
+      <div class="tab-bar" role="tablist">
+        <button class="tab-btn active" data-tab="uetr" role="tab">By UETR</button>
+        <button class="tab-btn" data-tab="details" role="tab">By Details</button>
       </div>
 
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
-      </div>
+      <!-- ── Tab: UETR ──────────────────────────────────────────── -->
+      <form id="form-uetr" class="search-form tab-panel active" data-tab="uetr" novalidate>
+        <label class="field-label">
+          UETR (UUID v4)
+          <input id="uetr-input" type="text" name="uetr" placeholder="97ed4827-7b6f-4491-a06f-b548d5a7512d" autocomplete="off" spellcheck="false"/>
+        </label>
+        <p class="field-hint">Unique End-to-End Transaction Reference assigned by the sending bank.</p>
+        <button type="submit" class="btn-primary">Track Transfer</button>
+        <button type="button" id="demo-uetr-btn" class="btn-secondary">Load Demo</button>
+      </form>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
-      </div>
+      <!-- ── Tab: Details ───────────────────────────────────────── -->
+      <form id="form-details" class="search-form tab-panel" data-tab="details" novalidate>
+        <label class="field-label">
+          Sending BIC *
+          <input id="sending-bic" type="text" name="sendingBic" placeholder="DEUTDEDB" maxlength="11" autocomplete="off" spellcheck="false"/>
+        </label>
 
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
+        <label class="field-label">
+          Receiving BIC
+          <input id="receiving-bic" type="text" name="receivingBic" placeholder="NWBKGB2L" maxlength="11" autocomplete="off" spellcheck="false"/>
+        </label>
+
+        <label class="field-label">
+          Amount
+          <input id="amount-input" type="number" name="amount" placeholder="125000.00" min="0.01" step="0.01"/>
+        </label>
+
+        <label class="field-label">
+          Currency
+          <select id="currency-select" name="currency">
+            <option value="EUR">EUR — Euro</option>
+            <option value="USD">USD — US Dollar</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="CHF">CHF — Swiss Franc</option>
+            <option value="JPY">JPY — Japanese Yen</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="AUD">AUD — Australian Dollar</option>
+            <option value="HKD">HKD — Hong Kong Dollar</option>
+            <option value="SGD">SGD — Singapore Dollar</option>
+          </select>
+        </label>
+
+        <label class="field-label">
+          Sender Name
+          <input id="sender-name" type="text" name="senderName" placeholder="ACME Corporation GmbH" autocomplete="off"/>
+        </label>
+
+        <button type="submit" class="btn-primary">Track Transfer</button>
+        <button type="button" id="demo-details-btn" class="btn-secondary">Load Demo</button>
+      </form>
+
+      <!-- ── Status log ──────────────────────────────────────────── -->
+      <p id="tracker-status" class="tracker-status-msg" role="status" aria-live="polite"></p>
     </aside>
 
-    <main>
-      <canvas id="chart"></canvas>
+    <!-- ── Results panel ──────────────────────────────────────────────── -->
+    <main id="tracker-results" class="tracker-main" aria-live="polite">
+      <div class="empty-state">
+        <div class="empty-icon">⚡</div>
+        <p>Enter a UETR or sender details to track a SWIFT transfer.</p>
+      </div>
     </main>
-  </div>
-  <script src="app.js"></script>
+
+  </div><!-- /.tracker-layout -->
+
+  <!-- ── Result template (hidden, cloned by JS) ─────────────────────── -->
+  <template id="result-template">
+    <div class="result-root">
+
+      <!-- Summary card -->
+      <section class="card summary-card">
+        <div class="summary-header">
+          <div>
+            <span class="badge" data-status></span>
+            <span class="summary-amount"></span>
+            <span class="summary-ccy"></span>
+          </div>
+          <div class="summary-meta">
+            <span class="meta-label">Net credited</span>
+            <span class="net-amount"></span>
+          </div>
+        </div>
+
+        <div class="summary-route">
+          <div class="party">
+            <div class="party-name sender-name"></div>
+            <div class="party-bic sender-bic"></div>
+            <div class="party-acct sender-acct"></div>
+          </div>
+          <div class="arrow-box">
+            <div class="arrow-line"></div>
+            <div class="arrow-label ccy-label"></div>
+          </div>
+          <div class="party">
+            <div class="party-name receiver-name"></div>
+            <div class="party-bic receiver-bic"></div>
+            <div class="party-acct receiver-acct"></div>
+          </div>
+        </div>
+
+        <div class="summary-fields">
+          <div class="sf-row"><span>UETR</span><code class="uetr-val"></code></div>
+          <div class="sf-row"><span>Message ID</span><code class="msgid-val"></code></div>
+          <div class="sf-row"><span>End-to-End ID</span><code class="e2e-val"></code></div>
+          <div class="sf-row"><span>Settlement Date</span><span class="settle-date"></span></div>
+          <div class="sf-row"><span>Initiated</span><span class="initiated-at"></span></div>
+          <div class="sf-row completed-row"><span>Completed</span><span class="completed-at"></span></div>
+          <div class="sf-row"><span>Charges</span><span class="charge-bearer"></span></div>
+          <div class="sf-row"><span>Remittance</span><span class="remittance-info"></span></div>
+          <div class="sf-row src-row"><span>Data source</span><span class="data-src"></span></div>
+        </div>
+      </section>
+
+      <!-- gpi Timeline -->
+      <section class="card timeline-card">
+        <h3 class="card-title">Payment Journey</h3>
+        <ol class="timeline" id="timeline-list"></ol>
+      </section>
+
+      <!-- Raw message formats -->
+      <section class="card msg-card">
+        <div class="msg-header">
+          <h3 class="card-title">Message Format</h3>
+          <div class="msg-tab-bar">
+            <button class="msg-tab active" data-msg="pacs008">PACS.008</button>
+            <button class="msg-tab" data-msg="mt103">MT103</button>
+          </div>
+        </div>
+        <div class="msg-panels">
+          <pre class="msg-panel active" id="pacs008-panel"></pre>
+          <pre class="msg-panel" id="mt103-panel"></pre>
+        </div>
+        <button class="btn-copy" id="copy-msg-btn">Copy</button>
+      </section>
+
+    </div>
+  </template>
+
+  <script src="swift-tracker.js"></script>
 </body>
 </html>

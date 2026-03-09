@@ -25,6 +25,19 @@ body {
   z-index: 100;
 }
 
+.topnav-logo-link {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: .25rem;
+}
+
+.topnav-logo {
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+}
+
 .topnav-brand {
   font-weight: 700;
   letter-spacing: .04em;

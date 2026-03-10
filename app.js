@@ -78,7 +78,7 @@ const ELEMENTS = {
 // ===== PLANET DISPLAY DATA =====
 const PLANET_DATA = {
   Sun: {
-    color: '#FDB813', glow: '#FF8C00', radius: 14,
+    color: '#FDB813', glow: '#FF8C00', radius: 12,
     emoji: '☀️', type: 'Stern',
     nameDe: 'Sonne',
     desc: 'Die Sonne ist der Stern im Zentrum unseres Sonnensystems. Sie liefert die Energie für nahezu alles Leben auf der Erde und hält durch ihre Gravitation alle Planeten auf ihren Bahnen.',
@@ -92,7 +92,7 @@ const PLANET_DATA = {
     }
   },
   Mercury: {
-    color: '#b5b5b5', glow: '#d0d0d0', radius: 3,
+    color: '#b5b5b5', glow: '#d0d0d0', radius: 2,
     emoji: '🪨', type: 'Gesteinsplanet',
     nameDe: 'Merkur',
     desc: 'Merkur ist der sonnennächste Planet und zugleich der kleinste im Sonnensystem. Seine dünne Exosphäre bietet kaum Schutz vor Temperaturschwankungen von –180 °C bis +430 °C.',
@@ -106,7 +106,7 @@ const PLANET_DATA = {
     }
   },
   Venus: {
-    color: '#e8c373', glow: '#f5d080', radius: 5,
+    color: '#e8c373', glow: '#f5d080', radius: 4,
     emoji: '🌟', type: 'Gesteinsplanet',
     nameDe: 'Venus',
     desc: 'Die Venus ist der hellste Planet am Erdenhimmel und dreht sich retrograd. Trotz größerer Sonnenentfernung als Merkur ist sie wärmer – ihr dichter CO₂-Treibhauseffekt heizt die Oberfläche auf 465 °C auf.',
@@ -120,7 +120,7 @@ const PLANET_DATA = {
     }
   },
   Earth: {
-    color: '#4fa3e8', glow: '#7ec8f0', radius: 5,
+    color: '#4fa3e8', glow: '#7ec8f0', radius: 4,
     emoji: '🌍', type: 'Gesteinsplanet',
     nameDe: 'Erde',
     desc: 'Die Erde ist der größte Gesteinsplanet und der einzige bekannte Ort im Universum, an dem Leben existiert. Flüssiges Wasser, eine schützende Atmosphäre und ein starkes Magnetfeld machen sie einzigartig.',
@@ -134,7 +134,7 @@ const PLANET_DATA = {
     }
   },
   Moon: {
-    color: '#c8c8c8', glow: '#e0e0e0', radius: 3,
+    color: '#c8c8c8', glow: '#e0e0e0', radius: 2,
     emoji: '🌕', type: 'Mond',
     nameDe: 'Mond',
     desc: 'Der Mond ist der einzige natürliche Satellit der Erde. Er ist das fünftgrößte Objekt im Sonnensystem und beeinflusst maßgeblich die Gezeiten auf der Erde. Der Mensch hat ihn als einzigen anderen Himmelskörper betreten.',
@@ -148,7 +148,7 @@ const PLANET_DATA = {
     }
   },
   Mars: {
-    color: '#c1440e', glow: '#e05a20', radius: 4,
+    color: '#c1440e', glow: '#e05a20', radius: 3,
     emoji: '🔴', type: 'Gesteinsplanet',
     nameDe: 'Mars',
     desc: 'Der rote Planet besitzt die höchsten bekannten Vulkane des Sonnensystems (Olympus Mons) sowie einen riesigen Canyon (Valles Marineris). Er ist ein Hauptziel zukünftiger bemannter Raumfahrt.',
@@ -162,7 +162,7 @@ const PLANET_DATA = {
     }
   },
   Jupiter: {
-    color: '#c88b3a', glow: '#e0a050', radius: 10,
+    color: '#c88b3a', glow: '#e0a050', radius: 11,
     emoji: '🪐', type: 'Gasriese',
     nameDe: 'Jupiter',
     desc: 'Jupiter ist der größte Planet des Sonnensystems – er enthält mehr Masse als alle anderen Planeten zusammen. Der Große Rote Fleck ist ein Sturmsystem, das seit mindestens 350 Jahren wütet.',
@@ -190,7 +190,7 @@ const PLANET_DATA = {
     }
   },
   Uranus: {
-    color: '#7de8e8', glow: '#a0f0f0', radius: 6,
+    color: '#7de8e8', glow: '#a0f0f0', radius: 7,
     emoji: '🧊', type: 'Eisriese',
     nameDe: 'Uranus',
     desc: 'Uranus rotiert auf seiner Seite – seine Achse ist um 98° geneigt, vermutlich durch eine frühe Kollision. Er besitzt ein schwaches Ringsystem und wurde erst 1781 von Wilhelm Herschel entdeckt.',
@@ -204,7 +204,7 @@ const PLANET_DATA = {
     }
   },
   Neptune: {
-    color: '#3f54ba', glow: '#5070d0', radius: 6,
+    color: '#3f54ba', glow: '#5070d0', radius: 7,
     emoji: '🌊', type: 'Eisriese',
     nameDe: 'Neptun',
     desc: 'Neptun ist der äußerste Planet und wurde 1846 durch mathematische Berechnungen entdeckt – bevor man ihn sah. Er besitzt die stärksten Winde im Sonnensystem mit bis zu 2.100 km/h.',
@@ -483,38 +483,30 @@ function renderSolar(canvas, positions) {
   const cx = W / 2 + state.panX;
   const cy = H / 2 + state.panY;
 
-  // Scale: 1 AU => how many pixels at zoom=1
-  // Use logarithmic scale to fit inner + outer planets
-  // We map AU distance from sun using a power function
+  // Scale: power-law r^0.4 gives good separation of inner AND outer planets
   const BASE_SCALE = Math.min(W, H) * 0.45 * state.zoom;
+  const SCALE_EXP = 0.4;
+  const SCALE_MAX = Math.pow(32, SCALE_EXP); // normalize so Neptune≈edge
 
   function auToPixels(au) {
-    // log scale: compress outer planets
-    return BASE_SCALE * Math.log1p(au) / Math.log1p(32);
+    return BASE_SCALE * Math.pow(Math.max(au, 0.001), SCALE_EXP) / SCALE_MAX;
   }
 
-  // Draw orbit ellipses (simplified as circles at mean distance)
-  for (const [name, data] of Object.entries(PLANET_DATA)) {
-    if (name === 'Sun' || name === 'Moon' || name === 'Earth') continue;
-    const pos = positions[name];
-    if (!pos) continue;
-    const helioR = Math.sqrt(pos.hx * pos.hx + pos.hy * pos.hy);
-    if (helioR < 0.001) continue;
-    const orbitR = auToPixels(helioR);
+  // Fixed semi-major axes (AU) for orbit circles
+  const ORBIT_AU = {
+    Mercury: 0.387, Venus: 0.723, Earth: 1.000,
+    Mars: 1.524, Jupiter: 5.203, Saturn: 9.537,
+    Uranus: 19.191, Neptune: 30.069
+  };
+
+  // Draw orbit circles using fixed semi-major axes
+  for (const [name, a] of Object.entries(ORBIT_AU)) {
+    const orbitR = auToPixels(a);
     ctx.beginPath();
     ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(100,100,160,0.18)';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
-  // Earth orbit
-  {
-    const pos = positions['Earth'];
-    const helioR = Math.sqrt(pos.hx * pos.hx + pos.hy * pos.hy);
-    const orbitR = auToPixels(helioR);
-    ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(79,163,232,0.25)';
+    ctx.strokeStyle = name === 'Earth'
+      ? 'rgba(79,163,232,0.30)'
+      : 'rgba(100,100,160,0.18)';
     ctx.lineWidth = 0.8;
     ctx.stroke();
   }
@@ -531,18 +523,6 @@ function renderSolar(canvas, positions) {
     let px, py;
     if (name === 'Sun') {
       px = cx; py = cy;
-    } else if (name === 'Earth') {
-      px = cx + auToPixels(Math.abs(pos.hx)) * Math.sign(pos.hx);
-      py = cy - auToPixels(Math.abs(pos.hy)) * Math.sign(pos.hy);
-      // Better: use actual coords
-      px = cx + auToPixels(pos.hx * Math.sign(pos.hx)) * Math.sign(pos.hx);
-      py = cy - auToPixels(pos.hy * Math.sign(pos.hy)) * Math.sign(pos.hy);
-      // Even simpler: direct scaled coords
-      const scale = BASE_SCALE / Math.log1p(32);
-      const r_h = Math.sqrt(pos.hx*pos.hx + pos.hy*pos.hy);
-      const r_px = auToPixels(r_h);
-      px = cx + (r_px / r_h) * pos.hx;
-      py = cy - (r_px / r_h) * pos.hy;
     } else {
       const r_h = Math.sqrt(pos.hx*pos.hx + pos.hy*pos.hy);
       if (r_h < 1e-6) { px = cx; py = cy; }
@@ -554,16 +534,17 @@ function renderSolar(canvas, positions) {
     }
 
     bodyPixels[name] = { px, py };
-    const r = data.radius * Math.max(0.6, state.zoom * 0.7);
+    const r = data.radius * Math.max(0.5, Math.min(1.5, state.zoom));
 
-    // Glow for Sun
+    // Glow for Sun (kept tight so it doesn't overwhelm inner planets)
     if (name === 'Sun') {
-      const grad = ctx.createRadialGradient(px, py, 0, px, py, r * 3.5);
-      grad.addColorStop(0, 'rgba(253,184,19,0.9)');
-      grad.addColorStop(0.3, 'rgba(255,140,0,0.5)');
+      const glowR = r * 2.2;
+      const grad = ctx.createRadialGradient(px, py, r * 0.5, px, py, glowR);
+      grad.addColorStop(0, 'rgba(253,200,60,0.7)');
+      grad.addColorStop(0.6, 'rgba(255,140,0,0.25)');
       grad.addColorStop(1, 'rgba(255,80,0,0)');
       ctx.beginPath();
-      ctx.arc(px, py, r * 3.5, 0, Math.PI * 2);
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
       ctx.fillStyle = grad;
       ctx.fill();
     }
@@ -605,7 +586,7 @@ function renderSolar(canvas, positions) {
   const earthPx = bodyPixels['Earth'];
   const moonPos = positions['Moon'];
   if (earthPx && moonPos) {
-    const moonOffsetScale = auToPixels(0.00257) * 12; // exaggerate moon orbit
+    const moonOffsetScale = Math.max(14, 18 * state.zoom); // fixed pixel offset (Moon orbit not to scale)
     const r_geo = Math.sqrt(moonPos.gx*moonPos.gx + moonPos.gy*moonPos.gy);
     let mpx, mpy;
     if (r_geo < 1e-8) { mpx = earthPx.px + 15; mpy = earthPx.py; }

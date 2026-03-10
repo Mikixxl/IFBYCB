@@ -444,13 +444,14 @@ const state = {
 };
 
 // ===== STAR FIELD =====
+// Stored as fractions (0-1) so they work for any canvas size
 let stars = [];
-function generateStars(w, h, n = 300) {
+function generateStars(n = 300) {
   stars = [];
   for (let i = 0; i < n; i++) {
     stars.push({
-      x: Math.random() * w,
-      y: Math.random() * h,
+      fx: Math.random(),
+      fy: Math.random(),
       r: Math.random() * 1.2 + 0.2,
       a: Math.random() * 0.6 + 0.3
     });
@@ -474,7 +475,7 @@ function renderSolar(canvas, positions) {
     ctx.globalAlpha = s.a;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.arc(s.fx * W, s.fy * H, s.r, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -665,12 +666,13 @@ function renderSky(canvas, positions, jd) {
 
   // Stars
   for (const s of stars) {
+    const sx = s.fx * W, sy = s.fy * H;
     ctx.globalAlpha = s.a * 0.7;
     ctx.fillStyle = '#fff';
-    const dist = Math.sqrt((s.x-cx)*(s.x-cx)+(s.y-cy)*(s.y-cy));
+    const dist = Math.sqrt((sx-cx)*(sx-cx)+(sy-cy)*(sy-cy));
     if (dist < R) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r * 0.7, 0, Math.PI * 2);
+      ctx.arc(sx, sy, s.r * 0.7, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -874,16 +876,16 @@ function buildLegend() {
 
 // ===== RESIZE & ANIMATION =====
 function resizeCanvases() {
+  // Use view-container dimensions as reference (always visible)
+  const container = document.querySelector('.view-container').getBoundingClientRect();
   for (const id of ['solar-canvas', 'sky-canvas']) {
     const canvas = document.getElementById(id);
     const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    // If parent is hidden (display:none), rect is 0 — use container fallback
+    canvas.width  = rect.width  > 0 ? rect.width  : container.width;
+    canvas.height = rect.height > 0 ? rect.height : container.height;
   }
-  generateStars(
-    document.getElementById('solar-canvas').width,
-    document.getElementById('solar-canvas').height
-  );
+  generateStars();
 }
 
 function updateDatetime() {
@@ -966,6 +968,7 @@ function initUI() {
       btn.classList.add('active');
       state.view = btn.dataset.view;
       document.getElementById(`view-${state.view}`).classList.add('active');
+      resizeCanvases();
       render();
     });
   });

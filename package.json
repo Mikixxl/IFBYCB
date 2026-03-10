@@ -5,5 +5,9 @@
   "description": "Static HTML deployment for IFB SBY",
   "scripts": {
     "build": "echo \"no build\""
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0",
+    "cheerio": "^1.0.0"
   }
 }

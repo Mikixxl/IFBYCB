@@ -1,45 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yield Curve Visualiser</title>
+  <title>Planetarium – Sonnensystem</title>
   <link rel="stylesheet" href="styles.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <aside>
-      <h2>Yield Curve Visualiser</h2>
-      <p>Live sovereign curves with time comparison and CDS overlays.</p>
-
-      <div>
-        <label><input type="checkbox" value="US" checked> United States</label><br/>
-        <label><input type="checkbox" value="DE" checked> Germany</label><br/>
-        <label><input type="checkbox" value="GB"> United Kingdom</label><br/>
-        <label><input type="checkbox" value="JP" checked> Japan</label><br/>
-        <label><input type="checkbox" value="CA" checked> Canada</label>
+  <header>
+    <div class="header-left">
+      <span class="logo">&#127756;</span>
+      <h1>Planetarium</h1>
+    </div>
+    <div class="controls">
+      <div class="control-group">
+        <label for="datetime">Datum &amp; Zeit</label>
+        <input type="datetime-local" id="datetime"/>
+        <button id="btn-now" title="Aktuelle Zeit">Jetzt</button>
       </div>
-
-      <div>
-        <strong>Time horizon</strong><br/>
-        <label><input type="radio" name="horizon" value="today" checked> Today</label>
-        <label><input type="radio" name="horizon" value="1w"> 1 week</label>
-        <label><input type="radio" name="horizon" value="1m"> 1 month</label>
+      <div class="control-group">
+        <label for="lat">Breitengrad</label>
+        <input type="number" id="lat" value="48.137" step="0.001" min="-90" max="90"/>
+        <label for="lon">Längengrad</label>
+        <input type="number" id="lon" value="11.576" step="0.001" min="-180" max="180"/>
+        <button id="btn-location" title="GPS-Standort verwenden">&#128205; Standort</button>
       </div>
+    </div>
+  </header>
 
-      <div>
-        <label><input type="checkbox" id="cds"> Show CDS 5Y overlay</label>
+  <nav class="tabs">
+    <button class="tab active" data-view="solar">&#9728;&#65039; Sonnensystem</button>
+    <button class="tab" data-view="sky">&#127756; Himmelskarte</button>
+  </nav>
+
+  <div class="view-container">
+    <section id="view-solar" class="view active">
+      <canvas id="solar-canvas"></canvas>
+      <div class="zoom-controls">
+        <button id="zoom-in">+</button>
+        <button id="zoom-reset">&#8634;</button>
+        <button id="zoom-out">−</button>
       </div>
-
-      <button id="refresh">Refresh data</button>
-      <p id="status"></p>
-    </aside>
-
-    <main>
-      <canvas id="chart"></canvas>
-    </main>
+      <div class="view-hint">Scrollen zum Zoomen &middot; Ziehen zum Verschieben &middot; Klicken für Details</div>
+    </section>
+    <section id="view-sky" class="view">
+      <canvas id="sky-canvas"></canvas>
+      <div class="view-hint">Klicken für Details &middot; Zeigt sichtbare Objekte von Ihrem Standort</div>
+    </section>
   </div>
+
+  <!-- Info panel (slides in from right) -->
+  <aside id="info-panel" class="hidden">
+    <button id="info-close">&#10005;</button>
+    <div id="info-content"></div>
+  </aside>
+
+  <!-- Legend -->
+  <div id="legend">
+    <div class="legend-title">Legende</div>
+    <div class="legend-items" id="legend-items"></div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

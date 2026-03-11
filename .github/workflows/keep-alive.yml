@@ -9,14 +9,16 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase to prevent pausing
+      - name: Ping Supabase with authenticated API call
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -L \
-            "https://faqvdjuhuitfvejzysqp.supabase.co")
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://faqvdjuhuitfvejzysqp.supabase.co/rest/v1/prospectus_requests?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhcXZkanVodWl0ZnZlanp5c3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MTg5MzEsImV4cCI6MjA4NzM5NDkzMX0.4EBvRxLjAfRbsqAC6W5gEg10rjPpHG2jSMZubEk1kkw" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhcXZkanVodWl0ZnZlanp5c3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MTg5MzEsImV4cCI6MjA4NzM5NDkzMX0.4EBvRxLjAfRbsqAC6W5gEg10rjPpHG2jSMZubEk1kkw")
           echo "Response code: $RESPONSE"
-          if [ "$RESPONSE" -eq 000 ]; then
-            echo "❌ Could not connect"
-            exit 1
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ Keep-alive successful"
           else
-            echo "✅ Keep-alive successful (status $RESPONSE)"
+            echo "❌ Unexpected response: $RESPONSE"
+            exit 1
           fi
